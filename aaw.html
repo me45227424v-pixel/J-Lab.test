@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>CIWS City Defense v05</title>
+  <title>CIWS City Defense v06</title>
   <style>
     html, body {
       margin: 0;
@@ -45,6 +45,7 @@ const UI_RED = "#ff4040";
 const UI_AMBER = "#ffb000";
 
 const state = {
+  started: false,
   score: 0,
   damage: 0,
   gameOver: false,
@@ -158,7 +159,7 @@ function setPointer(x, y) {
 }
 
 function refreshFireState() {
-  state.firing = !state.gameOver && (state.mouseDown || state.touchActive);
+  state.firing = state.started && !state.gameOver && (state.mouseDown || state.touchActive);
 }
 
 function stopAllFireInput() {
@@ -167,15 +168,27 @@ function stopAllFireInput() {
   state.firing = false;
 }
 
+async function startGame() {
+  if (state.started) return;
+  await initAudio();
+  state.started = true;
+  state.spawnMissileTimer = rand(1.2, 2.4);
+  state.spawnDroneTimer = rand(1.08, 1.83);
+}
+
 canvas.addEventListener("mousemove", (e) => {
   const rect = canvas.getBoundingClientRect();
   setPointer(e.clientX - rect.left, e.clientY - rect.top);
 });
 
 canvas.addEventListener("mousedown", async (e) => {
-  await initAudio();
   const rect = canvas.getBoundingClientRect();
   setPointer(e.clientX - rect.left, e.clientY - rect.top);
+
+  if (!state.started) {
+    await startGame();
+  }
+
   state.mouseDown = true;
   refreshFireState();
 });
@@ -191,16 +204,20 @@ canvas.addEventListener("mouseleave", () => {
 });
 
 canvas.addEventListener("touchstart", async (e) => {
-  await initAudio();
   if (e.touches.length > 0) {
     const rect = canvas.getBoundingClientRect();
     setPointer(
       e.touches[0].clientX - rect.left,
       e.touches[0].clientY - rect.top
     );
-    state.touchActive = true;
-    refreshFireState();
   }
+
+  if (!state.started) {
+    await startGame();
+  }
+
+  state.touchActive = true;
+  refreshFireState();
   e.preventDefault();
 }, { passive: false });
 
@@ -231,7 +248,9 @@ canvas.addEventListener("touchcancel", (e) => {
 
 window.addEventListener("keydown", async (e) => {
   if (e.code === "Space") {
-    await initAudio();
+    if (!state.started) {
+      await startGame();
+    }
     state.mouseDown = true;
     refreshFireState();
     e.preventDefault();
@@ -266,7 +285,7 @@ function createBullet() {
     life: 3.3
   });
 
-  state.score -= 5;
+  state.score -= 10;
 }
 
 function spawnMissile() {
@@ -278,7 +297,9 @@ function spawnMissile() {
   const dx = targetX - startX;
   const dy = targetY - startY;
   const len = Math.hypot(dx, dy) || 1;
-  const speed = rand(h * 0.17, h * 0.30);
+
+  // 旧最高速の1.2倍で固定
+  const speed = h * 0.36;
 
   state.missiles.push({
     type: "missile",
@@ -319,7 +340,7 @@ function createExplosion(x, y, radius, colorA, colorB, isGroundHit = false) {
   state.explosions.push({
     x, y,
     t: 0,
-    life: isGroundHit ? 0.62 : 0.45,
+    life: isGroundHit ? 0.74 : 0.45,
     radius,
     colorA,
     colorB,
@@ -344,6 +365,7 @@ let audioCtx = null;
 let masterGain = null;
 let ciwsNoise = null;
 let ciwsFilter = null;
+let ciwsLowpass = null;
 let ciwsGain = null;
 let ciwsLfo = null;
 let ciwsLfoGain = null;
@@ -352,32 +374,38 @@ async function initAudio() {
   if (!audioCtx) {
     try {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
       masterGain = audioCtx.createGain();
       masterGain.gain.value = 0.72;
       masterGain.connect(audioCtx.destination);
 
       ciwsNoise = createNoiseSource();
+
       ciwsFilter = audioCtx.createBiquadFilter();
       ciwsFilter.type = "bandpass";
-      ciwsFilter.frequency.value = 150;
-      ciwsFilter.Q.value = 1.1;
+      ciwsFilter.frequency.value = 60;
+      ciwsFilter.Q.value = 0.4;
+
+      ciwsLowpass = audioCtx.createBiquadFilter();
+      ciwsLowpass.type = "lowpass";
+      ciwsLowpass.frequency.value = 180;
 
       ciwsGain = audioCtx.createGain();
       ciwsGain.gain.value = 0.0;
 
-      // 発射音にわずかな脈動を入れて「ブゥーーー」感を強める
       ciwsLfo = audioCtx.createOscillator();
       ciwsLfo.type = "triangle";
-      ciwsLfo.frequency.value = 34;
+      ciwsLfo.frequency.value = 18;
 
       ciwsLfoGain = audioCtx.createGain();
-      ciwsLfoGain.gain.value = 18;
+      ciwsLfoGain.gain.value = 35;
 
       ciwsLfo.connect(ciwsLfoGain);
       ciwsLfoGain.connect(ciwsFilter.frequency);
 
       ciwsNoise.connect(ciwsFilter);
-      ciwsFilter.connect(ciwsGain);
+      ciwsFilter.connect(ciwsLowpass);
+      ciwsLowpass.connect(ciwsGain);
       ciwsGain.connect(masterGain);
 
       ciwsNoise.start();
@@ -416,7 +444,7 @@ function updateCIWSSound() {
   if (!state.audioReady || !ciwsGain || !audioCtx) return;
 
   const now = audioCtx.currentTime;
-  const targetGain = (state.firing && !state.gameOver) ? 0.30 : 0.0;
+  const targetGain = (state.firing && !state.gameOver) ? 0.42 : 0.0;
 
   ciwsGain.gain.cancelScheduledValues(now);
   ciwsGain.gain.linearRampToValueAtTime(targetGain, now + 0.02);
@@ -440,10 +468,10 @@ function playExplosionSound(radius, isGroundHit = false) {
   bandpass.Q.value = 0.8;
 
   const base = Math.min(0.34, 0.11 + radius * 0.0028);
-  const finalGain = isGroundHit ? base * 1.2 : base;
+  const finalGain = isGroundHit ? base * 1.44 : base;
 
   gain.gain.setValueAtTime(finalGain, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + (isGroundHit ? 0.34 : 0.24));
+  gain.gain.exponentialRampToValueAtTime(0.001, now + (isGroundHit ? 0.41 : 0.24));
 
   noise.connect(lowpass);
   lowpass.connect(bandpass);
@@ -451,13 +479,18 @@ function playExplosionSound(radius, isGroundHit = false) {
   gain.connect(masterGain);
 
   noise.start(now);
-  noise.stop(now + (isGroundHit ? 0.36 : 0.26));
+  noise.stop(now + (isGroundHit ? 0.43 : 0.26));
 }
 
 /* =========================
    UPDATE
 ========================= */
 function update(dt, nowMs) {
+  if (!state.started) {
+    updateCIWSSound();
+    return;
+  }
+
   if (state.gameOver) {
     updateCIWSSound();
     return;
@@ -481,12 +514,12 @@ function update(dt, nowMs) {
 
   if (state.spawnMissileTimer <= 0) {
     spawnMissile();
-    state.spawnMissileTimer = rand(0.6, 1.2);
+    state.spawnMissileTimer = rand(1.2, 2.4);
   }
 
   if (state.spawnDroneTimer <= 0) {
     spawnDrone();
-    state.spawnDroneTimer = rand(1.3, 2.2);
+    state.spawnDroneTimer = rand(1.08, 1.83);
   }
 
   for (let i = state.bullets.length - 1; i >= 0; i--) {
@@ -528,7 +561,7 @@ function update(dt, nowMs) {
     if (m.y >= groundY()) {
       createExplosion(
         m.x, groundY() - 6,
-        Math.max(58, w * 0.085),
+        Math.max(70, w * 0.102),
         "#fff7c8", "#ffb347",
         true
       );
@@ -565,7 +598,7 @@ function update(dt, nowMs) {
     if (d.y >= groundY()) {
       createExplosion(
         d.x, groundY() - 6,
-        Math.max(48, w * 0.072),
+        Math.max(58, w * 0.086),
         "#fff8d6", "#ffbf66",
         true
       );
@@ -757,6 +790,23 @@ function drawExplosions() {
   }
 }
 
+function drawAimPoint() {
+  if (!state.started || state.gameOver) return;
+
+  ctx.strokeStyle = "rgba(0,255,120,0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(state.pointerX, state.pointerY, 8, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(state.pointerX - 12, state.pointerY);
+  ctx.lineTo(state.pointerX + 12, state.pointerY);
+  ctx.moveTo(state.pointerX, state.pointerY - 12);
+  ctx.lineTo(state.pointerX, state.pointerY + 12);
+  ctx.stroke();
+}
+
 function drawUI() {
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
@@ -776,10 +826,17 @@ function drawUI() {
   ctx.fillStyle = UI_RED;
   ctx.fillText(`DAMAGE : ${Math.floor(state.damage)}%`, uiX, 20 + titleSize * 2 + 18);
 
-  if (!state.audioReady) {
-    ctx.font = `bold ${subSize}px ${UI_FONT}`;
+  if (!state.started) {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.font = `bold ${Math.max(28, w * 0.04)}px ${UI_FONT}`;
+    ctx.fillStyle = UI_GREEN;
+    ctx.fillText("TAP / CLICK TO START", w * 0.5, h * 0.44);
+
+    ctx.font = `bold ${Math.max(14, w * 0.016)}px ${UI_FONT}`;
     ctx.fillStyle = "#88aaff";
-    ctx.fillText("TAP / CLICK TO ENABLE SOUND", uiX, 20 + titleSize * 2 + subSize + 30);
+    ctx.fillText("AUDIO ENABLE REQUIRED", w * 0.5, h * 0.50);
   }
 
   if (state.gameOver) {
@@ -793,21 +850,6 @@ function drawUI() {
     ctx.fillStyle = UI_AMBER;
     ctx.fillText(`FINAL SCORE : ${state.score}`, w * 0.5, h * 0.48);
   }
-}
-
-function drawAimPoint() {
-  ctx.strokeStyle = "rgba(0,255,120,0.35)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.arc(state.pointerX, state.pointerY, 8, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(state.pointerX - 12, state.pointerY);
-  ctx.lineTo(state.pointerX + 12, state.pointerY);
-  ctx.moveTo(state.pointerX, state.pointerY - 12);
-  ctx.lineTo(state.pointerX, state.pointerY + 12);
-  ctx.stroke();
 }
 
 function render() {
