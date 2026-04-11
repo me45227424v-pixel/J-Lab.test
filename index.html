@@ -24,7 +24,6 @@ body{
   overflow:hidden;
 }
 
-/* ノイズ */
 body::before{
   content:"";
   position:fixed;
@@ -39,7 +38,6 @@ body::before{
   );
 }
 
-/* BOOT */
 .boot{
   position:fixed;
   inset:0;
@@ -49,21 +47,21 @@ body::before{
   text-align:center;
   font-size:var(--font-main);
   cursor:pointer;
+  user-select:none;
 }
 
 .boot.hidden{
   display:none;
 }
 
-/* 左上時刻 */
 .datetime{
   position:fixed;
   top:12px;
   left:14px;
   font-size:var(--font-main);
+  user-select:none;
 }
 
-/* メイン */
 .screen{
   display:none;
   flex-direction:column;
@@ -75,13 +73,11 @@ body::before{
   display:flex;
 }
 
-/* タイトル */
 .title{
   font-size:var(--font-main);
   margin-bottom:40px;
 }
 
-/* メニュー */
 .menu{
   width:70%;
   max-width:700px;
@@ -96,6 +92,8 @@ body::before{
   text-decoration:none;
   color:var(--green);
   position:relative;
+  cursor:pointer;
+  user-select:none;
 }
 
 .item:last-child{
@@ -113,13 +111,13 @@ body::before{
   left:10px;
 }
 
-/* フッター */
 .footer{
   position:fixed;
   bottom:10px;
   right:10px;
   font-size:var(--font-main);
   opacity:0.6;
+  user-select:none;
 }
 </style>
 </head>
@@ -128,7 +126,7 @@ body::before{
 
 <div class="boot" id="boot">
   OP LOAD COMPLETE<br><br>
-  TAP TO CONTINUE
+  CLICK / TAP TO CONTINUE
 </div>
 
 <div class="datetime" id="datetime"></div>
@@ -138,9 +136,9 @@ body::before{
   <div class="title">J-Lab</div>
 
   <div class="menu">
-    <a class="item" href="#">Anti-Air Warfare</a>
-    <a class="item" href="#">Surface Warfare</a>
-    <a class="item" href="#">Undersea Warfare</a>
+    <a class="item" href="aaw.html">Anti-Air Warfare</a>
+    <a class="item" href="suw.html">Surface Warfare</a>
+    <a class="item" href="usw.html">Undersea Warfare</a>
   </div>
 
 </div>
@@ -154,38 +152,158 @@ const items = document.querySelectorAll(".item");
 const datetimeEl = document.getElementById("datetime");
 
 let current = -1;
+let isNavigating = false;
 
-/* 時計 */
-function pad(n){return String(n).padStart(2,"0");}
+/* ===== 時計 ===== */
+function pad(n){ return String(n).padStart(2, "0"); }
 
 function updateTime(){
   const d = new Date();
   datetimeEl.textContent =
-    d.getFullYear()+" "+
-    pad(d.getMonth()+1)+" "+
-    pad(d.getDate())+" "+
-    pad(d.getHours())+" "+
-    pad(d.getMinutes())+" "+
+    d.getFullYear() + " " +
+    pad(d.getMonth() + 1) + " " +
+    pad(d.getDate()) + " " +
+    pad(d.getHours()) + " " +
+    pad(d.getMinutes()) + " " +
     pad(d.getSeconds());
 }
-setInterval(updateTime,1000);
+setInterval(updateTime, 1000);
 updateTime();
 
-/* 起動 */
-boot.addEventListener("click",()=>{
+/* ===== 音 ===== */
+let ctx;
+let activeOscillators = [];
+
+function ensureAudioContext(){
+  if(!ctx){
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return ctx;
+}
+
+function stopAll(){
+  if(!ctx) return;
+  activeOscillators.forEach(o => {
+    try { o.stop(); } catch(e){}
+  });
+  activeOscillators = [];
+}
+
+function tone(freq, start, d){
+  const audio = ensureAudioContext();
+  const o = audio.createOscillator();
+  const g = audio.createGain();
+
+  o.type = "sine";
+  o.frequency.value = freq;
+
+  o.connect(g);
+  g.connect(audio.destination);
+
+  g.gain.setValueAtTime(0.001, start);
+  g.gain.linearRampToValueAtTime(0.05, start + 0.01);
+  g.gain.setValueAtTime(0.05, start + d - 0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, start + d);
+
+  o.start(start);
+  o.stop(start + d);
+
+  activeOscillators.push(o);
+}
+
+function playConfirmBeep(){
+  const audio = ensureAudioContext();
+
+  const start = () => {
+    stopAll();
+
+    const t = ctx.currentTime;
+    const d = 0.1;
+
+    // 1セット:
+    // 500Hz 0.1秒 → 250Hz 0.1秒 → 0.2秒無音
+    // → 500Hz 0.1秒 → 250Hz 0.1秒 → 0.5秒無音
+    const setLength = 1.1;
+
+    // 2ループ
+    for(let i = 0; i < 2; i++){
+      const base = t + (i * setLength);
+
+      tone(500, base, d);
+      tone(250, base + 0.1, d);
+
+      tone(500, base + 0.4, d);
+      tone(250, base + 0.5, d);
+    }
+  };
+
+  if(audio.state === "suspended"){
+    audio.resume().then(start);
+  } else {
+    start();
+  }
+}
+
+/* ===== 起動 ===== */
+function enterMainScreen(){
+  if(isNavigating) return;
   boot.classList.add("hidden");
   screen.classList.add("visible");
-});
+  playConfirmBeep();
+}
 
-/* 選択 */
+boot.addEventListener("click", enterMainScreen);
+
+/* ===== 選択 ===== */
 function setActive(i){
-  current=i;
-  items.forEach(el=>el.classList.remove("active"));
+  current = i;
+  items.forEach(el => el.classList.remove("active"));
   items[i].classList.add("active");
 }
 
-items.forEach((el,i)=>{
-  el.addEventListener("pointerenter",()=>setActive(i));
+function navigateWithBeep(i){
+  if(isNavigating) return;
+  isNavigating = true;
+
+  setActive(i);
+  playConfirmBeep();
+
+  const url = items[i].getAttribute("href");
+
+  // 2ループ分の再生が終わってから遷移
+  setTimeout(() => {
+    window.location.href = url;
+  }, 2300);
+}
+
+items.forEach((el, i) => {
+  el.addEventListener("pointerenter", () => setActive(i));
+  el.addEventListener("mouseenter", () => setActive(i));
+
+  el.addEventListener("click", (e) => {
+    e.preventDefault();
+    navigateWithBeep(i);
+  });
+});
+
+/* ===== キーボード ===== */
+document.addEventListener("keydown", (e) => {
+  if(!screen.classList.contains("visible")) return;
+  if(isNavigating) return;
+
+  if(e.key === "ArrowDown"){
+    current = (current + 1 + items.length) % items.length;
+    setActive(current);
+  }
+
+  if(e.key === "ArrowUp"){
+    current = (current - 1 + items.length) % items.length;
+    setActive(current);
+  }
+
+  if(e.key === "Enter" && current >= 0){
+    navigateWithBeep(current);
+  }
 });
 </script>
 
