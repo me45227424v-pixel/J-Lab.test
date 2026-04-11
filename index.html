@@ -229,32 +229,84 @@ SEL : NONE`;
 }
 
 /* ビープ */
-function beep(){
-  if(!ctx) ctx=new (window.AudioContext||window.webkitAudioContext)();
-  const t=ctx.currentTime;
+function beep()
+  let ctx;
+let activeOscillators = [];
+let activeGains = [];
 
-  function tone(freq,start){
-    const o=ctx.createOscillator();
-    const g=ctx.createGain();
+function stopAllBeeps() {
+  const now = ctx ? ctx.currentTime : 0;
 
-    o.type="sine";
-    o.frequency.value=freq;
+  activeGains.forEach(g => {
+    try {
+      g.gain.cancelScheduledValues(now);
+      g.gain.setValueAtTime(0.0001, now);
+    } catch (e) {}
+  });
+
+  activeOscillators.forEach(o => {
+    try {
+      o.stop(now);
+    } catch (e) {}
+  });
+
+  activeOscillators = [];
+  activeGains = [];
+}
+
+function beep() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  if (ctx.state === "suspended") {
+    ctx.resume();
+  }
+
+  stopAllBeeps();
+
+  const now = ctx.currentTime;
+
+  function tone(freq, start, duration) {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+
+    o.type = "sine";
+    o.frequency.setValueAtTime(freq, start);
+
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.linearRampToValueAtTime(0.05, start + 0.01);
+    g.gain.setValueAtTime(0.05, start + duration - 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
 
     o.connect(g);
     g.connect(ctx.destination);
 
-    // 音量エンベロープ（クリック音防止）
-    g.gain.setValueAtTime(0.001,start);
-    g.gain.linearRampToValueAtTime(0.06,start+0.01);
-    g.gain.exponentialRampToValueAtTime(0.001,start+0.1);
-
     o.start(start);
-    o.stop(start+0.1);
+    o.stop(start + duration);
+
+    activeOscillators.push(o);
+    activeGains.push(g);
+
+    o.onended = () => {
+      activeOscillators = activeOscillators.filter(x => x !== o);
+      activeGains = activeGains.filter(x => x !== g);
+    };
   }
 
-  // 800Hz → 500Hz（各0.1秒）
-  tone(500,t);
-  tone(250,t+0.1);
+  const toneDuration = 0.1;
+  const gapBetweenTones = 0.0;   // 500Hz→250Hzは連続
+  const gapBetweenSets = 0.2;    // 2セットの間は0.2秒ブランク
+  const setLength = toneDuration + gapBetweenTones + toneDuration; // 0.2秒
+
+  // 1セット目
+  tone(500, now, toneDuration);
+  tone(250, now + toneDuration + gapBetweenTones, toneDuration);
+
+  // 2セット目（0.2秒のブランク後）
+  const secondSetStart = now + setLength + gapBetweenSets;
+  tone(500, secondSetStart, toneDuration);
+  tone(250, secondSetStart + toneDuration + gapBetweenTones, toneDuration);
 }
 
 /* ポインタ */
