@@ -13,11 +13,8 @@
 :root{
   --bg:#000;
   --green:#00d94f;
-  --green-soft:rgba(0,217,79,0.08);
-  --green-dim:rgba(0,217,79,0.28);
+  --green-dim:rgba(0,217,79,0.3);
   --amber:#ffb347;
-  --amber-soft:rgba(255,179,71,0.12);
-  --amber-dim:rgba(255,179,71,0.3);
 }
 
 body{
@@ -28,7 +25,7 @@ body{
   overflow:hidden;
 }
 
-/* 軽い走査 */
+/* スキャンライン */
 body::before{
   content:"";
   position:fixed;
@@ -43,7 +40,21 @@ body::before{
   );
 }
 
-/* ブートライン */
+/* BOOT */
+.boot{
+  position:fixed;
+  inset:0;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:#000;
+  font-size:24px;
+  text-align:center;
+  z-index:10;
+}
+.hidden{display:none;}
+
+/* 上部ライン */
 .boot-line{
   position:fixed;
   top:0;
@@ -51,8 +62,7 @@ body::before{
   height:2px;
   width:0;
   background:var(--green);
-  box-shadow:0 0 6px rgba(0,217,79,0.5);
-  animation:scan 0.8s ease forwards;
+  animation:scan 0.8s forwards;
 }
 @keyframes scan{to{width:100%;}}
 
@@ -63,34 +73,27 @@ body::before{
   left:14px;
   font-size:20px;
   line-height:1.1;
-  letter-spacing:0.04em;
-  text-shadow:
-    0 0 3px rgba(0,217,79,0.3),
-    0 0 6px rgba(0,217,79,0.15);
+  text-shadow:0 0 4px rgba(0,217,79,0.3);
 }
 
-/* 中央ブロック（やや上寄せ） */
+/* 中央 */
 .screen{
   min-height:100vh;
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:flex-start;
-  padding-top:14vh; /* ←ここがポイント */
+  padding-top:14vh;
 }
 
-/* タイトル */
 .title{
   font-family:"Share Tech Mono",monospace;
   font-size:72px;
   letter-spacing:0.15em;
   margin-bottom:36px;
-  text-shadow:
-    0 0 4px rgba(0,217,79,0.4),
-    0 0 12px rgba(0,217,79,0.15);
+  text-shadow:0 0 8px rgba(0,217,79,0.3);
 }
 
-/* メニュー */
 .menu{
   width:520px;
 }
@@ -103,27 +106,18 @@ body::before{
   color:var(--green);
   text-decoration:none;
   border-top:1px solid var(--green-dim);
-  transition:all 0.1s linear;
-  text-shadow:
-    0 0 3px rgba(0,217,79,0.25),
-    0 0 6px rgba(0,217,79,0.12);
+  text-shadow:0 0 6px rgba(0,217,79,0.2);
 }
 
-/* カーソル */
 .item::before{
-  content:" ";
   position:absolute;
   left:12px;
+  content:" ";
 }
 
-/* アクティブ */
 .item.active{
   color:var(--amber);
-  background:var(--amber-soft);
-  border-color:var(--amber-dim);
-  text-shadow:
-    0 0 4px rgba(255,179,71,0.45),
-    0 0 10px rgba(255,179,71,0.2);
+  background:rgba(255,179,71,0.1);
 }
 
 .item.active::before{
@@ -138,32 +132,15 @@ body::before{
   font-size:18px;
   opacity:0.7;
 }
-
-/* ブート表示 */
-.boot{
-  position:fixed;
-  inset:0;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-  background:#000;
-  color:var(--green);
-  font-size:24px;
-  letter-spacing:0.08em;
-  text-shadow:
-    0 0 4px rgba(0,217,79,0.35);
-}
-.hidden{display:none;}
 </style>
 </head>
 
 <body>
 
 <div class="boot" id="boot">
-  SYSTEM INIT...<br>
-  LINK CHECK...<br>
-  NODE ONLINE...
+SYSTEM INIT...<br>
+LINK CHECK...<br>
+NODE ONLINE...
 </div>
 
 <div class="boot-line"></div>
@@ -204,9 +181,12 @@ const boot=document.getElementById("boot");
 
 let current=-1;
 let ctx;
+let activeOscillators=[];
+let activeGains=[];
 
 setTimeout(()=>boot.classList.add("hidden"),1200);
 
+/* ステータス */
 function setActive(i){
   current=i;
   items.forEach(el=>el.classList.remove("active"));
@@ -228,85 +208,57 @@ NODE: J-LAB
 SEL : NONE`;
 }
 
-/* ビープ */
-function beep()
-  let ctx;
-let activeOscillators = [];
-let activeGains = [];
-
-function stopAllBeeps() {
-  const now = ctx ? ctx.currentTime : 0;
-
-  activeGains.forEach(g => {
-    try {
-      g.gain.cancelScheduledValues(now);
-      g.gain.setValueAtTime(0.0001, now);
-    } catch (e) {}
+/* 音停止 */
+function stopAllBeeps(){
+  const now=ctx?ctx.currentTime:0;
+  activeGains.forEach(g=>{
+    try{g.gain.setValueAtTime(0.0001,now);}catch(e){}
   });
-
-  activeOscillators.forEach(o => {
-    try {
-      o.stop(now);
-    } catch (e) {}
+  activeOscillators.forEach(o=>{
+    try{o.stop(now);}catch(e){}
   });
-
-  activeOscillators = [];
-  activeGains = [];
+  activeOscillators=[];
+  activeGains=[];
 }
 
-function beep() {
-  if (!ctx) {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-
-  if (ctx.state === "suspended") {
-    ctx.resume();
-  }
+/* ビープ */
+function beep(){
+  if(!ctx) ctx=new (window.AudioContext||window.webkitAudioContext)();
+  if(ctx.state==="suspended") ctx.resume();
 
   stopAllBeeps();
 
-  const now = ctx.currentTime;
+  const t=ctx.currentTime;
 
-  function tone(freq, start, duration) {
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
+  function tone(f,start){
+    const o=ctx.createOscillator();
+    const g=ctx.createGain();
 
-    o.type = "sine";
-    o.frequency.setValueAtTime(freq, start);
-
-    g.gain.setValueAtTime(0.0001, start);
-    g.gain.linearRampToValueAtTime(0.05, start + 0.01);
-    g.gain.setValueAtTime(0.05, start + duration - 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    o.type="sine";
+    o.frequency.value=f;
 
     o.connect(g);
     g.connect(ctx.destination);
 
+    g.gain.setValueAtTime(0.001,start);
+    g.gain.linearRampToValueAtTime(0.05,start+0.01);
+    g.gain.exponentialRampToValueAtTime(0.001,start+0.1);
+
     o.start(start);
-    o.stop(start + duration);
+    o.stop(start+0.1);
 
     activeOscillators.push(o);
     activeGains.push(g);
-
-    o.onended = () => {
-      activeOscillators = activeOscillators.filter(x => x !== o);
-      activeGains = activeGains.filter(x => x !== g);
-    };
   }
 
-  const toneDuration = 0.1;
-  const gapBetweenTones = 0.0;   // 500Hz→250Hzは連続
-  const gapBetweenSets = 0.2;    // 2セットの間は0.2秒ブランク
-  const setLength = toneDuration + gapBetweenTones + toneDuration; // 0.2秒
-
   // 1セット目
-  tone(500, now, toneDuration);
-  tone(250, now + toneDuration + gapBetweenTones, toneDuration);
+  tone(500,t);
+  tone(250,t+0.1);
 
-  // 2セット目（0.2秒のブランク後）
-  const secondSetStart = now + setLength + gapBetweenSets;
-  tone(500, secondSetStart, toneDuration);
-  tone(250, secondSetStart + toneDuration + gapBetweenTones, toneDuration);
+  // 0.2秒空けて2セット目
+  const s2=t+0.2+0.2;
+  tone(500,s2);
+  tone(250,s2+0.1);
 }
 
 /* ポインタ */
