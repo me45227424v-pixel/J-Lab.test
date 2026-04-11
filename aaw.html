@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>CIWS City Defense v09</title>
+  <title>CIWS City Defense v10</title>
   <style>
     html, body {
       margin: 0;
@@ -66,10 +66,12 @@ const state = {
   ciwsUnits: [],
   spawnMissileTimer: 0,
   spawnDroneTimer: 0,
-  audioReady: false
+  audioReady: false,
+  screenFlash: 0
 };
 
-const groundY = () => h * 0.95;
+// 地面を5%ぶん嵩上げ
+const groundY = () => h * 0.90;
 
 function getCIWSBodyW() {
   return Math.max(10, w * 0.012);
@@ -114,7 +116,7 @@ function generateStars() {
   for (let i = 0; i < count; i++) {
     state.stars.push({
       x: rand(0, w),
-      y: rand(0, h * 0.9),
+      y: rand(0, h * 0.86),
       r: rand(0.5, 1.8),
       a: rand(0.3, 1.0)
     });
@@ -190,20 +192,21 @@ async function startGame() {
 }
 
 function isPointInsideCIWS(px, py, unit) {
-  const bodyW = getCIWSBodyW();
-  const bodyH = getCIWSBodyH();
-  const domeR = bodyW * 0.48;
+  // タップしやすいよう当たり判定を拡大
+  const bodyW = getCIWSBodyW() * 1.8;
+  const bodyH = getCIWSBodyH() * 1.5;
+  const domeR = bodyW * 0.55;
   const baseY = groundY();
 
   const inBody =
     px >= unit.x - bodyW / 2 &&
     px <= unit.x + bodyW / 2 &&
     py >= baseY - bodyH &&
-    py <= baseY;
+    py <= baseY + 8;
 
   const dx = px - unit.x;
-  const dy = py - (baseY - bodyH);
-  const inDome = (dx * dx + dy * dy) <= domeR * domeR && py <= (baseY - bodyH);
+  const dy = py - (baseY - bodyH * 0.75);
+  const inDome = (dx * dx + dy * dy) <= domeR * domeR;
 
   return inBody || inDome;
 }
@@ -233,6 +236,10 @@ canvas.addEventListener("mousedown", async (e) => {
 
   if (!state.started) {
     await startGame();
+    state.mouseDown = false;
+    state.touchActive = false;
+    refreshFireState();
+    return;
   }
 
   if (trySpawnExtraCIWS(px, py)) {
@@ -268,6 +275,11 @@ canvas.addEventListener("touchstart", async (e) => {
 
   if (!state.started) {
     await startGame();
+    state.mouseDown = false;
+    state.touchActive = false;
+    refreshFireState();
+    e.preventDefault();
+    return;
   }
 
   if (trySpawnExtraCIWS(px, py)) {
@@ -311,6 +323,11 @@ window.addEventListener("keydown", async (e) => {
   if (e.code === "Space") {
     if (!state.started) {
       await startGame();
+      state.mouseDown = false;
+      state.touchActive = false;
+      refreshFireState();
+      e.preventDefault();
+      return;
     }
     state.mouseDown = true;
     refreshFireState();
@@ -399,6 +416,10 @@ function spawnDrone() {
   });
 }
 
+function triggerScreenFlash(intensity = 0.7) {
+  state.screenFlash = Math.max(state.screenFlash, intensity);
+}
+
 function createExplosion(x, y, radius, colorA, colorB, isGroundHit = false) {
   const finalRadius = isGroundHit ? radius * 1.25 : radius;
 
@@ -414,6 +435,7 @@ function createExplosion(x, y, radius, colorA, colorB, isGroundHit = false) {
 
   if (isGroundHit) {
     createGroundSparks(x, y, finalRadius);
+    triggerScreenFlash(0.78);
   }
 
   playExplosionSound(finalRadius, isGroundHit);
@@ -475,7 +497,7 @@ async function initAudio() {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
       masterGain = audioCtx.createGain();
-      masterGain.gain.value = 0.78;
+      masterGain.gain.value = 1.17; // 50%増し
       masterGain.connect(audioCtx.destination);
 
       ciwsMaster = audioCtx.createGain();
@@ -761,6 +783,9 @@ function update(dt, nowMs) {
     }
   }
 
+  // 画面フラッシュ減衰
+  state.screenFlash = Math.max(0, state.screenFlash - dt * 3.2);
+
   state.damage = clamp(state.damage, 0, 100);
 
   if (state.damage >= 100) {
@@ -978,6 +1003,18 @@ function drawAimPoint() {
   ctx.stroke();
 }
 
+function drawScreenFlash() {
+  if (state.screenFlash <= 0) return;
+
+  const a = state.screenFlash * 0.35;
+
+  ctx.fillStyle = `rgba(255, 245, 210, ${a})`;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.fillStyle = `rgba(255, 180, 80, ${a * 0.65})`;
+  ctx.fillRect(0, 0, w, h);
+}
+
 function drawUI() {
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
@@ -1036,6 +1073,7 @@ function render() {
   drawExplosions();
   drawSparks();
   drawAimPoint();
+  drawScreenFlash();
   drawUI();
 }
 
