@@ -816,15 +816,12 @@ function drawUI() {
   const uiX = w - 280;
 
   ctx.font = `bold ${titleSize}px ${UI_FONT}`;
-  ctx.fillStyle = UI_GREEN;
-  ctx.fillText("FIRE : TOUCH / MOUSE", uiX, 20);
-
   ctx.fillStyle = UI_AMBER;
-  ctx.fillText(`SCORE : ${state.score}`, uiX, 20 + titleSize + 8);
+  ctx.fillText(`SCORE : ${state.score}`, uiX, 20);
 
   ctx.font = `bold ${subSize}px ${UI_FONT}`;
   ctx.fillStyle = UI_RED;
-  ctx.fillText(`DAMAGE : ${Math.floor(state.damage)}%`, uiX, 20 + titleSize * 2 + 18);
+  ctx.fillText(`DAMAGE : ${Math.floor(state.damage)}%`, uiX, 20 + titleSize + 8);
 
   if (!state.started) {
     ctx.textAlign = "center";
