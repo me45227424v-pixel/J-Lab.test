@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>CIWS City Defense v10</title>
+  <title>CIWS City Defense v11</title>
   <style>
     html, body {
       margin: 0;
@@ -67,7 +67,8 @@ const state = {
   spawnMissileTimer: 0,
   spawnDroneTimer: 0,
   audioReady: false,
-  screenFlash: 0
+  screenFlash: 0,
+  retryButton: null
 };
 
 // 地面を5%ぶん嵩上げ
@@ -183,12 +184,46 @@ function stopAllFireInput() {
   state.firing = false;
 }
 
+function resetGame() {
+  state.score = 0;
+  state.damage = 0;
+  state.gameOver = false;
+  state.firing = false;
+  state.mouseDown = false;
+  state.touchActive = false;
+  state.lastShotAt = 0;
+  state.missiles = [];
+  state.drones = [];
+  state.bullets = [];
+  state.explosions = [];
+  state.sparks = [];
+  state.screenFlash = 0;
+  state.retryButton = null;
+
+  generateCity();
+  generateStars();
+  initCIWSUnits();
+
+  state.spawnMissileTimer = rand(1.2, 2.4);
+  state.spawnDroneTimer = rand(1.08, 1.83);
+}
+
 async function startGame() {
   if (state.started) return;
   await initAudio();
   state.started = true;
   state.spawnMissileTimer = rand(1.2, 2.4);
   state.spawnDroneTimer = rand(1.08, 1.83);
+}
+
+function isPointInRect(px, py, rect) {
+  if (!rect) return false;
+  return (
+    px >= rect.x &&
+    px <= rect.x + rect.w &&
+    py >= rect.y &&
+    py <= rect.y + rect.h
+  );
 }
 
 function isPointInsideCIWS(px, py, unit) {
@@ -234,6 +269,11 @@ canvas.addEventListener("mousedown", async (e) => {
   const py = e.clientY - rect.top;
   setPointer(px, py);
 
+  if (state.gameOver && isPointInRect(px, py, state.retryButton)) {
+    resetGame();
+    return;
+  }
+
   if (!state.started) {
     await startGame();
     state.mouseDown = false;
@@ -271,6 +311,12 @@ canvas.addEventListener("touchstart", async (e) => {
     px = e.touches[0].clientX - rect.left;
     py = e.touches[0].clientY - rect.top;
     setPointer(px, py);
+  }
+
+  if (state.gameOver && isPointInRect(px, py, state.retryButton)) {
+    resetGame();
+    e.preventDefault();
+    return;
   }
 
   if (!state.started) {
@@ -497,7 +543,7 @@ async function initAudio() {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
       masterGain = audioCtx.createGain();
-      masterGain.gain.value = 1.17; // 50%増し
+      masterGain.gain.value = 1.17;
       masterGain.connect(audioCtx.destination);
 
       ciwsMaster = audioCtx.createGain();
@@ -783,9 +829,7 @@ function update(dt, nowMs) {
     }
   }
 
-  // 画面フラッシュ減衰
   state.screenFlash = Math.max(0, state.screenFlash - dt * 3.2);
-
   state.damage = clamp(state.damage, 0, 100);
 
   if (state.damage >= 100) {
@@ -1047,13 +1091,35 @@ function drawUI() {
   if (state.gameOver) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+
     ctx.font = `bold ${Math.max(28, w * 0.04)}px ${UI_FONT}`;
     ctx.fillStyle = "#ff4040";
-    ctx.fillText("GAME OVER", w * 0.5, h * 0.42);
+    ctx.fillText("GAME OVER", w * 0.5, h * 0.40);
 
     ctx.font = `bold ${Math.max(16, w * 0.018)}px ${UI_FONT}`;
     ctx.fillStyle = UI_AMBER;
-    ctx.fillText(`FINAL SCORE : ${state.score}`, w * 0.5, h * 0.48);
+    ctx.fillText(`FINAL SCORE : ${state.score}`, w * 0.5, h * 0.46);
+
+    const btnW = Math.max(140, w * 0.16);
+    const btnH = Math.max(44, h * 0.065);
+    const btnX = w * 0.5 - btnW / 2;
+    const btnY = h * 0.53;
+
+    state.retryButton = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+    ctx.strokeStyle = UI_GREEN;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(btnX, btnY, btnW, btnH);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = UI_GREEN;
+    ctx.font = `bold ${Math.max(18, w * 0.02)}px ${UI_FONT}`;
+    ctx.fillText("RETRY", w * 0.5, btnY + btnH / 2);
+  } else {
+    state.retryButton = null;
   }
 }
 
