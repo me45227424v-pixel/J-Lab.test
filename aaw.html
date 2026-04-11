@@ -135,7 +135,6 @@ function generateCity() {
       }
     }
 
-    // 暗すぎない明るいグレー帯をランダム化
     const shade = Math.floor(rand(45, 100));
     state.buildings.push({
       x: bx,
@@ -237,10 +236,9 @@ function spawnMissile() {
   const dy = targetY - startY;
   const len = Math.hypot(dx, dy) || 1;
 
-  // 旧より1.5〜2倍
   const speed = rand(h * 0.17, h * 0.30);
 
-  const missile = {
+  state.missiles.push({
     type: "missile",
     x: startX,
     y: startY,
@@ -248,11 +246,8 @@ function spawnMissile() {
     vy: (dy / len) * speed,
     angle: Math.atan2(dy, dx),
     length: Math.max(14, w * 0.018),
-    width: Math.max(3.2, w * 0.004) // 旧の0.8倍くらい
-  };
-
-  attachMissileSound(missile);
-  state.missiles.push(missile);
+    width: Math.max(3.2, w * 0.004)
+  });
 }
 
 function spawnDrone() {
@@ -266,10 +261,9 @@ function spawnDrone() {
   const dy = targetY - startY;
   const len = Math.hypot(dx, dy) || 1;
 
-  // 旧より1.5〜2倍
   const speed = rand(h * 0.08, h * 0.14);
 
-  const drone = {
+  state.drones.push({
     type: "drone",
     x: startX,
     y: startY,
@@ -277,10 +271,7 @@ function spawnDrone() {
     vy: (dy / len) * speed,
     angle: Math.atan2(dy, dx),
     size: Math.max(10, w * 0.015)
-  };
-
-  attachDroneSound(drone);
-  state.drones.push(drone);
+  });
 }
 
 function createExplosion(x, y, radius, colorA, colorB) {
@@ -292,6 +283,7 @@ function createExplosion(x, y, radius, colorA, colorB) {
     colorA,
     colorB
   });
+  playExplosionSound(radius);
 }
 
 function hitTarget(target, bullet) {
@@ -316,15 +308,15 @@ function initAudio() {
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0.45;
+    masterGain.gain.value = 0.55;
     masterGain.connect(audioCtx.destination);
 
-    // CIWS 連射音
+    // CIWS連射音：低域ノイズ主体の「ブゥーーー」
     ciwsNoise = createNoiseSource();
     ciwsFilter = audioCtx.createBiquadFilter();
     ciwsFilter.type = "bandpass";
-    ciwsFilter.frequency.value = 120;
-    ciwsFilter.Q.value = 0.8;
+    ciwsFilter.frequency.value = 140;
+    ciwsFilter.Q.value = 0.9;
 
     ciwsGain = audioCtx.createGain();
     ciwsGain.gain.value = 0.0;
@@ -356,93 +348,34 @@ function createNoiseSource() {
 function updateCIWSSound() {
   if (!state.audioReady || !ciwsGain || !audioCtx) return;
   const now = audioCtx.currentTime;
-  const targetGain = (state.firing && !state.gameOver) ? 0.18 : 0.0;
+  const targetGain = (state.firing && !state.gameOver) ? 0.22 : 0.0;
   ciwsGain.gain.cancelScheduledValues(now);
-  ciwsGain.gain.linearRampToValueAtTime(targetGain, now + 0.04);
+  ciwsGain.gain.linearRampToValueAtTime(targetGain, now + 0.03);
 }
 
-function attachMissileSound(missile) {
-  if (!state.audioReady) return;
+function playExplosionSound(radius) {
+  if (!state.audioReady || !audioCtx) return;
 
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  const pan = audioCtx.createStereoPanner();
+  const now = audioCtx.currentTime;
+
+  const noise = createNoiseSource();
   const filter = audioCtx.createBiquadFilter();
-
-  osc.type = "sawtooth";
-  osc.frequency.value = rand(500, 850);
-
-  filter.type = "bandpass";
-  filter.frequency.value = rand(900, 1800);
-  filter.Q.value = 2.5;
-
-  gain.gain.value = 0.0;
-
-  osc.connect(filter);
-  filter.connect(pan);
-  pan.connect(gain);
-  gain.connect(masterGain);
-
-  osc.start();
-
-  missile.audio = { osc, gain, pan, filter };
-}
-
-function attachDroneSound(drone) {
-  if (!state.audioReady) return;
-
-  const osc1 = audioCtx.createOscillator();
-  const osc2 = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  const pan = audioCtx.createStereoPanner();
-  const filter = audioCtx.createBiquadFilter();
-
-  osc1.type = "sawtooth";
-  osc2.type = "triangle";
-  osc1.frequency.value = rand(90, 130);
-  osc2.frequency.value = rand(110, 170);
 
   filter.type = "lowpass";
-  filter.frequency.value = 500;
-  filter.Q.value = 0.7;
+  filter.frequency.value = 900;
 
-  gain.gain.value = 0.0;
+  const blastGain = Math.min(0.28, 0.10 + radius * 0.0025);
 
-  osc1.connect(filter);
-  osc2.connect(filter);
-  filter.connect(pan);
-  pan.connect(gain);
+  gain.gain.setValueAtTime(blastGain, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+  noise.connect(filter);
+  filter.connect(gain);
   gain.connect(masterGain);
 
-  osc1.start();
-  osc2.start();
-
-  drone.audio = { osc1, osc2, gain, pan, filter };
-}
-
-function updatePositionalAudio(obj, baseGain) {
-  if (!state.audioReady || !obj.audio) return;
-  const normX = (obj.x / w) * 2 - 1;
-  const dx = Math.abs(obj.x - w * 0.5) / (w * 0.5);
-  const centerDistanceAttn = 0.75 + (1 - dx) * 0.25;
-
-  if (obj.audio.pan) obj.audio.pan.pan.value = clamp(normX, -1, 1);
-  if (obj.audio.gain) obj.audio.gain.gain.value = baseGain * centerDistanceAttn;
-}
-
-function stopObjectAudio(obj) {
-  if (!obj.audio || !state.audioReady) return;
-  const now = audioCtx.currentTime;
-  try {
-    if (obj.audio.gain) {
-      obj.audio.gain.gain.cancelScheduledValues(now);
-      obj.audio.gain.gain.linearRampToValueAtTime(0, now + 0.05);
-    }
-    if (obj.audio.osc) obj.audio.osc.stop(now + 0.08);
-    if (obj.audio.osc1) obj.audio.osc1.stop(now + 0.08);
-    if (obj.audio.osc2) obj.audio.osc2.stop(now + 0.08);
-  } catch (e) {}
-  obj.audio = null;
+  noise.start(now);
+  noise.stop(now + 0.25);
 }
 
 /* =========================
@@ -459,7 +392,8 @@ function update(dt, nowMs) {
     state.pointerX - ciws.x
   );
 
-  if (state.firing && nowMs - state.lastShotAt > 100) {
+  // 毎秒30発
+  if (state.firing && nowMs - state.lastShotAt > (1000 / 30)) {
     createBullet();
     state.lastShotAt = nowMs;
   }
@@ -494,7 +428,6 @@ function update(dt, nowMs) {
     const m = state.missiles[i];
     m.x += m.vx * dt;
     m.y += m.vy * dt;
-    updatePositionalAudio(m, 0.05);
 
     let destroyed = false;
 
@@ -502,7 +435,6 @@ function update(dt, nowMs) {
       if (hitTarget(m, state.bullets[j])) {
         createExplosion(m.x, m.y, Math.max(18, w * 0.025), "#fff2a8", "#ff6a00");
         state.score += 200;
-        stopObjectAudio(m);
         state.missiles.splice(i, 1);
         state.bullets.splice(j, 1);
         destroyed = true;
@@ -515,7 +447,6 @@ function update(dt, nowMs) {
     if (m.y >= groundY()) {
       createExplosion(m.x, groundY() - 4, Math.max(26, w * 0.035), "#ffd27f", "#ff3300");
       state.damage += 8;
-      stopObjectAudio(m);
       state.missiles.splice(i, 1);
     }
   }
@@ -524,7 +455,6 @@ function update(dt, nowMs) {
     const d = state.drones[i];
     d.x += d.vx * dt;
     d.y += d.vy * dt;
-    updatePositionalAudio(d, 0.045);
 
     let destroyed = false;
 
@@ -532,7 +462,6 @@ function update(dt, nowMs) {
       if (hitTarget(d, state.bullets[j])) {
         createExplosion(d.x, d.y, Math.max(14, w * 0.02), "#f4f4f4", "#ff8844");
         state.score += 150;
-        stopObjectAudio(d);
         state.drones.splice(i, 1);
         state.bullets.splice(j, 1);
         destroyed = true;
@@ -545,7 +474,6 @@ function update(dt, nowMs) {
     if (d.y >= groundY()) {
       createExplosion(d.x, groundY() - 4, Math.max(20, w * 0.028), "#ffe0a6", "#ff5500");
       state.damage += 5;
-      stopObjectAudio(d);
       state.drones.splice(i, 1);
     }
   }
@@ -564,9 +492,6 @@ function update(dt, nowMs) {
     state.gameOver = true;
     state.firing = false;
     updateCIWSSound();
-
-    for (const m of state.missiles) stopObjectAudio(m);
-    for (const d of state.drones) stopObjectAudio(d);
   }
 }
 
@@ -612,7 +537,6 @@ function drawCIWS() {
   const baseX = ciws.x;
   const baseY = ciws.y;
 
-  // 本体
   ctx.fillStyle = "#bebebe";
   ctx.fillRect(
     baseX - ciws.bodyW / 2,
@@ -621,7 +545,6 @@ function drawCIWS() {
     ciws.bodyH
   );
 
-  // R2-D2寄りの小さめヘッド
   const domeR = ciws.bodyW * 0.48;
 
   ctx.beginPath();
@@ -630,11 +553,9 @@ function drawCIWS() {
   ctx.closePath();
   ctx.fill();
 
-  // ドーム下の首っぽい段
   ctx.fillStyle = "#cfcfcf";
   ctx.fillRect(baseX - domeR * 0.92, baseY - ciws.bodyH, domeR * 1.84, 4);
 
-  // 銃身
   ctx.save();
   ctx.translate(baseX, baseY - ciws.bodyH + 2);
   ctx.rotate(ciws.turretAngle);
@@ -688,7 +609,6 @@ function drawDrones() {
     ctx.translate(d.x, d.y);
     ctx.rotate(d.angle);
 
-    // シャヘド風の全翼・三角翼
     ctx.fillStyle = "#c8c8c8";
     ctx.beginPath();
     ctx.moveTo(d.size * 0.75, 0);
@@ -698,7 +618,6 @@ function drawDrones() {
     ctx.closePath();
     ctx.fill();
 
-    // 後部の小さな突起
     ctx.fillStyle = "#b8b8b8";
     ctx.fillRect(-d.size * 0.58, -d.size * 0.06, d.size * 0.16, d.size * 0.12);
 
