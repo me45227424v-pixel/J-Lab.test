@@ -18,7 +18,6 @@
   --bg:#000000;
   --green:#00d94f;
   --green-dim:rgba(0,217,79,0.30);
-  --green-glow:rgba(0,217,79,0.28);
   --amber:#ffb347;
   --amber-dim:rgba(255,179,71,0.22);
   --amber-bg:rgba(255,179,71,0.10);
@@ -39,6 +38,7 @@ html,body{
   font-family:"VT323", monospace;
 }
 
+/* 全体にうっすら走査線 */
 body::before{
   content:"";
   position:fixed;
@@ -46,13 +46,15 @@ body::before{
   pointer-events:none;
   background:repeating-linear-gradient(
     to bottom,
-    rgba(0,217,79,0.020) 0px,
-    rgba(0,217,79,0.020) 1px,
+    rgba(0,217,79,0.018) 0px,
+    rgba(0,217,79,0.018) 1px,
     transparent 1px,
     transparent 3px
   );
+  z-index:1;
 }
 
+/* 起動画面 */
 .boot{
   position:fixed;
   inset:0;
@@ -70,12 +72,60 @@ body::before{
     0 0 10px rgba(0,217,79,0.12);
   z-index:10;
   cursor:pointer;
+  overflow:hidden;
+}
+
+/* BOOT画面内の薄い横線 */
+.boot::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(0,217,79,0.028) 0px,
+    rgba(0,217,79,0.028) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  opacity:0.7;
+}
+
+/* BOOT画面内のスキャンバー */
+.boot::after{
+  content:"";
+  position:absolute;
+  left:0;
+  width:100%;
+  height:56px;
+  pointer-events:none;
+  background:linear-gradient(
+    to bottom,
+    rgba(0,217,79,0) 0%,
+    rgba(0,217,79,0.05) 20%,
+    rgba(0,217,79,0.18) 50%,
+    rgba(0,217,79,0.05) 80%,
+    rgba(0,217,79,0) 100%
+  );
+  box-shadow:0 0 18px rgba(0,217,79,0.12);
+  animation:bootSweep 2.2s linear infinite;
+}
+
+@keyframes bootSweep{
+  0%   { top:-70px; }
+  100% { top:calc(100% + 70px); }
 }
 
 .boot.hidden{
   display:none;
 }
 
+.boot-text{
+  position:relative;
+  z-index:11;
+}
+
+/* ステータス */
 .status{
   position:fixed;
   top:12px;
@@ -89,6 +139,7 @@ body::before{
     0 0 10px rgba(0,217,79,0.10);
 }
 
+/* メイン画面 */
 .screen{
   min-height:100vh;
   display:none;
@@ -96,6 +147,8 @@ body::before{
   align-items:center;
   justify-content:flex-start;
   padding-top:14vh;
+  position:relative;
+  z-index:2;
 }
 
 .screen.visible{
@@ -171,14 +224,17 @@ body::before{
   font-size:18px;
   opacity:0.78;
   text-shadow:0 0 4px rgba(0,217,79,0.20);
+  z-index:3;
 }
 </style>
 </head>
 <body>
 
 <div class="boot" id="boot">
-  OP LOAD COMPLETE<br><br>
-  TAP TO CONTINUE
+  <div class="boot-text">
+    OP LOAD COMPLETE<br><br>
+    TAP TO CONTINUE
+  </div>
 </div>
 
 <div class="status" id="status">
@@ -306,26 +362,26 @@ document.addEventListener("DOMContentLoaded", () => {
     const audio = ensureAudioContext();
     if (!audio) return;
 
+    const startPattern = () => {
+      stopAllBeeps();
+
+      const t = ctx.currentTime;
+      const toneDuration = 0.1;
+      const gapInsideSet = 0.0;
+      const gapBetweenSets = 0.3;
+      const setLength = toneDuration + gapInsideSet + toneDuration + gapBetweenSets;
+
+      for (let loop = 0; loop < 4; loop++) {
+        const base = t + (loop * setLength);
+        tone(500, base, toneDuration);
+        tone(250, base + toneDuration + gapInsideSet, toneDuration);
+      }
+    };
+
     if (audio.state === "suspended") {
-      audio.resume().then(() => {
-        startBootPattern();
-      });
+      audio.resume().then(startPattern);
     } else {
-      startBootPattern();
-    }
-  }
-
-  function startBootPattern() {
-    stopAllBeeps();
-
-    const t = ctx.currentTime;
-    const toneDuration = 0.1;
-    const setStartGap = 0.6;
-
-    for (let loop = 0; loop < 4; loop++) {
-      const base = t + (loop * setStartGap);
-      tone(500, base, toneDuration);
-      tone(250, base + 0.1, toneDuration);
+      startPattern();
     }
   }
 
