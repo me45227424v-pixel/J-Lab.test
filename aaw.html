@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>CIWS City Defense v06</title>
+  <title>CIWS City Defense v09</title>
   <style>
     html, body {
       margin: 0;
@@ -60,8 +60,10 @@ const state = {
   drones: [],
   bullets: [],
   explosions: [],
+  sparks: [],
   buildings: [],
   stars: [],
+  ciwsUnits: [],
   spawnMissileTimer: 0,
   spawnDroneTimer: 0,
   audioReady: false
@@ -69,13 +71,24 @@ const state = {
 
 const groundY = () => h * 0.95;
 
-const ciws = {
-  get x() { return w * 0.5; },
-  get y() { return groundY(); },
-  get bodyW() { return Math.max(10, w * 0.012); },
-  get bodyH() { return Math.max(30, h * 0.052); },
-  turretAngle: -Math.PI / 2
-};
+function getCIWSBodyW() {
+  return Math.max(10, w * 0.012);
+}
+
+function getCIWSBodyH() {
+  return Math.max(30, h * 0.052);
+}
+
+function createCIWSUnit(x) {
+  return {
+    x,
+    turretAngle: -Math.PI / 2
+  };
+}
+
+function initCIWSUnits() {
+  state.ciwsUnits = [createCIWSUnit(w * 0.5)];
+}
 
 function rand(min, max) {
   return Math.random() * (max - min) + min;
@@ -126,8 +139,8 @@ function generateCity() {
       for (let cx = 0; cx < cols; cx++) {
         const wx = bx + 2 + cx * (bw / cols);
         const wy = by + 3 + ry * (bh / rows);
-        const ww = Math.max(1.5, bw / cols - 3);
-        const wh = Math.max(2, bh / rows - 4);
+        const ww = Math.max(1.0, bw / cols - 4.5);
+        const wh = Math.max(1.4, bh / rows - 5.5);
 
         windows.push({
           x: wx,
@@ -176,6 +189,37 @@ async function startGame() {
   state.spawnDroneTimer = rand(1.08, 1.83);
 }
 
+function isPointInsideCIWS(px, py, unit) {
+  const bodyW = getCIWSBodyW();
+  const bodyH = getCIWSBodyH();
+  const domeR = bodyW * 0.48;
+  const baseY = groundY();
+
+  const inBody =
+    px >= unit.x - bodyW / 2 &&
+    px <= unit.x + bodyW / 2 &&
+    py >= baseY - bodyH &&
+    py <= baseY;
+
+  const dx = px - unit.x;
+  const dy = py - (baseY - bodyH);
+  const inDome = (dx * dx + dy * dy) <= domeR * domeR && py <= (baseY - bodyH);
+
+  return inBody || inDome;
+}
+
+function trySpawnExtraCIWS(px, py) {
+  for (const unit of state.ciwsUnits) {
+    if (isPointInsideCIWS(px, py, unit)) {
+      const margin = w * 0.08;
+      const x = rand(margin, w - margin);
+      state.ciwsUnits.push(createCIWSUnit(x));
+      return true;
+    }
+  }
+  return false;
+}
+
 canvas.addEventListener("mousemove", (e) => {
   const rect = canvas.getBoundingClientRect();
   setPointer(e.clientX - rect.left, e.clientY - rect.top);
@@ -183,10 +227,18 @@ canvas.addEventListener("mousemove", (e) => {
 
 canvas.addEventListener("mousedown", async (e) => {
   const rect = canvas.getBoundingClientRect();
-  setPointer(e.clientX - rect.left, e.clientY - rect.top);
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+  setPointer(px, py);
 
   if (!state.started) {
     await startGame();
+  }
+
+  if (trySpawnExtraCIWS(px, py)) {
+    state.mouseDown = false;
+    refreshFireState();
+    return;
   }
 
   state.mouseDown = true;
@@ -204,16 +256,25 @@ canvas.addEventListener("mouseleave", () => {
 });
 
 canvas.addEventListener("touchstart", async (e) => {
+  let px = state.pointerX;
+  let py = state.pointerY;
+
   if (e.touches.length > 0) {
     const rect = canvas.getBoundingClientRect();
-    setPointer(
-      e.touches[0].clientX - rect.left,
-      e.touches[0].clientY - rect.top
-    );
+    px = e.touches[0].clientX - rect.left;
+    py = e.touches[0].clientY - rect.top;
+    setPointer(px, py);
   }
 
   if (!state.started) {
     await startGame();
+  }
+
+  if (trySpawnExtraCIWS(px, py)) {
+    state.touchActive = false;
+    refreshFireState();
+    e.preventDefault();
+    return;
   }
 
   state.touchActive = true;
@@ -266,26 +327,29 @@ window.addEventListener("keyup", (e) => {
 });
 
 function createBullet() {
-  const sx = ciws.x;
-  const sy = ciws.y - ciws.bodyH - 4;
-
-  const dx = state.pointerX - sx;
-  const dy = state.pointerY - sy;
-  const len = Math.hypot(dx, dy) || 1;
-
-  // 真上に撃つと画面上端まで約3秒
+  const bodyH = getCIWSBodyH();
   const speed = h / 3;
+  const shotPenalty = 10;
 
-  state.bullets.push({
-    x: sx,
-    y: sy,
-    vx: (dx / len) * speed,
-    vy: (dy / len) * speed,
-    r: Math.max(0.8, w * 0.00065),
-    life: 3.3
-  });
+  for (const unit of state.ciwsUnits) {
+    const sx = unit.x;
+    const sy = groundY() - bodyH - 4;
 
-  state.score -= 10;
+    const dx = state.pointerX - sx;
+    const dy = state.pointerY - sy;
+    const len = Math.hypot(dx, dy) || 1;
+
+    state.bullets.push({
+      x: sx,
+      y: sy,
+      vx: (dx / len) * speed,
+      vy: (dy / len) * speed,
+      r: Math.max(0.8, w * 0.00065),
+      life: 3.3
+    });
+
+    state.score -= shotPenalty;
+  }
 }
 
 function spawnMissile() {
@@ -298,7 +362,6 @@ function spawnMissile() {
   const dy = targetY - startY;
   const len = Math.hypot(dx, dy) || 1;
 
-  // 旧最高速の1.2倍で固定
   const speed = h * 0.36;
 
   state.missiles.push({
@@ -316,7 +379,7 @@ function spawnMissile() {
 function spawnDrone() {
   const fromLeft = Math.random() < 0.5;
   const startX = fromLeft ? -20 : w + 20;
-  const startY = rand(h * 0.45, h * 0.82);
+  const startY = rand(h * 0.70, h * 0.90);
   const targetX = rand(w * 0.02, w * 0.98);
   const targetY = groundY();
 
@@ -337,17 +400,45 @@ function spawnDrone() {
 }
 
 function createExplosion(x, y, radius, colorA, colorB, isGroundHit = false) {
+  const finalRadius = isGroundHit ? radius * 1.25 : radius;
+
   state.explosions.push({
     x, y,
     t: 0,
-    life: isGroundHit ? 0.74 : 0.45,
-    radius,
+    life: isGroundHit ? 1.0 : 0.45,
+    radius: finalRadius,
     colorA,
     colorB,
     isGroundHit
   });
 
-  playExplosionSound(radius, isGroundHit);
+  if (isGroundHit) {
+    createGroundSparks(x, y, finalRadius);
+  }
+
+  playExplosionSound(finalRadius, isGroundHit);
+}
+
+function createGroundSparks(x, y, radius) {
+  const count = 26;
+
+  for (let i = 0; i < count; i++) {
+    const angle = rand(-Math.PI * 0.92, -Math.PI * 0.08);
+    const speed = rand(radius * 1.6, radius * 2.3);
+    const life = rand(0.6, 1.0);
+
+    state.sparks.push({
+      x,
+      y: y - rand(0, radius * 0.08),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      gravity: radius * 3.0,
+      life,
+      maxLife: life,
+      size: rand(2.0, 4.5),
+      color: Math.random() < 0.55 ? "#ffd27a" : "#fff0b8"
+    });
+  }
 }
 
 function hitTarget(target, bullet) {
@@ -363,12 +454,20 @@ function hitTarget(target, bullet) {
 ========================= */
 let audioCtx = null;
 let masterGain = null;
+
+let ciwsPulseOsc = null;
+let ciwsPulseGain = null;
+
+let ciwsSawOsc = null;
+let ciwsSawDist = null;
+let ciwsSawFilter = null;
+let ciwsSawGain = null;
+
 let ciwsNoise = null;
-let ciwsFilter = null;
-let ciwsLowpass = null;
-let ciwsGain = null;
-let ciwsLfo = null;
-let ciwsLfoGain = null;
+let ciwsNoiseHighpass = null;
+let ciwsNoiseGain = null;
+
+let ciwsMaster = null;
 
 async function initAudio() {
   if (!audioCtx) {
@@ -376,40 +475,59 @@ async function initAudio() {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
       masterGain = audioCtx.createGain();
-      masterGain.gain.value = 0.72;
+      masterGain.gain.value = 0.78;
       masterGain.connect(audioCtx.destination);
+
+      ciwsMaster = audioCtx.createGain();
+      ciwsMaster.gain.value = 0.0;
+      ciwsMaster.connect(masterGain);
+
+      ciwsPulseOsc = audioCtx.createOscillator();
+      ciwsPulseOsc.type = "square";
+      ciwsPulseOsc.frequency.value = 75;
+
+      ciwsPulseGain = audioCtx.createGain();
+      ciwsPulseGain.gain.value = 0.26;
+
+      ciwsPulseOsc.connect(ciwsPulseGain);
+      ciwsPulseGain.connect(ciwsMaster);
+
+      ciwsSawOsc = audioCtx.createOscillator();
+      ciwsSawOsc.type = "sawtooth";
+      ciwsSawOsc.frequency.value = 78;
+
+      ciwsSawDist = audioCtx.createWaveShaper();
+      ciwsSawDist.curve = makeDistortionCurve(420);
+      ciwsSawDist.oversample = "4x";
+
+      ciwsSawFilter = audioCtx.createBiquadFilter();
+      ciwsSawFilter.type = "lowpass";
+      ciwsSawFilter.frequency.value = 900;
+
+      ciwsSawGain = audioCtx.createGain();
+      ciwsSawGain.gain.value = 0.28;
+
+      ciwsSawOsc.connect(ciwsSawDist);
+      ciwsSawDist.connect(ciwsSawFilter);
+      ciwsSawFilter.connect(ciwsSawGain);
+      ciwsSawGain.connect(ciwsMaster);
 
       ciwsNoise = createNoiseSource();
 
-      ciwsFilter = audioCtx.createBiquadFilter();
-      ciwsFilter.type = "bandpass";
-      ciwsFilter.frequency.value = 60;
-      ciwsFilter.Q.value = 0.4;
+      ciwsNoiseHighpass = audioCtx.createBiquadFilter();
+      ciwsNoiseHighpass.type = "highpass";
+      ciwsNoiseHighpass.frequency.value = 1800;
 
-      ciwsLowpass = audioCtx.createBiquadFilter();
-      ciwsLowpass.type = "lowpass";
-      ciwsLowpass.frequency.value = 180;
+      ciwsNoiseGain = audioCtx.createGain();
+      ciwsNoiseGain.gain.value = 0.20;
 
-      ciwsGain = audioCtx.createGain();
-      ciwsGain.gain.value = 0.0;
+      ciwsNoise.connect(ciwsNoiseHighpass);
+      ciwsNoiseHighpass.connect(ciwsNoiseGain);
+      ciwsNoiseGain.connect(ciwsMaster);
 
-      ciwsLfo = audioCtx.createOscillator();
-      ciwsLfo.type = "triangle";
-      ciwsLfo.frequency.value = 18;
-
-      ciwsLfoGain = audioCtx.createGain();
-      ciwsLfoGain.gain.value = 35;
-
-      ciwsLfo.connect(ciwsLfoGain);
-      ciwsLfoGain.connect(ciwsFilter.frequency);
-
-      ciwsNoise.connect(ciwsFilter);
-      ciwsFilter.connect(ciwsLowpass);
-      ciwsLowpass.connect(ciwsGain);
-      ciwsGain.connect(masterGain);
-
+      ciwsPulseOsc.start();
+      ciwsSawOsc.start();
       ciwsNoise.start();
-      ciwsLfo.start();
     } catch (err) {
       console.log("Audio init failed:", err);
       return;
@@ -427,6 +545,19 @@ async function initAudio() {
   state.audioReady = (audioCtx && audioCtx.state === "running");
 }
 
+function makeDistortionCurve(amount = 50) {
+  const samples = 44100;
+  const curve = new Float32Array(samples);
+  const deg = Math.PI / 180;
+
+  for (let i = 0; i < samples; i++) {
+    const x = (i * 2) / samples - 1;
+    curve[i] = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
+  }
+
+  return curve;
+}
+
 function createNoiseSource() {
   const bufferSize = audioCtx.sampleRate * 2;
   const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -441,13 +572,13 @@ function createNoiseSource() {
 }
 
 function updateCIWSSound() {
-  if (!state.audioReady || !ciwsGain || !audioCtx) return;
+  if (!state.audioReady || !ciwsMaster || !audioCtx) return;
 
   const now = audioCtx.currentTime;
-  const targetGain = (state.firing && !state.gameOver) ? 0.42 : 0.0;
+  const targetGain = (state.firing && !state.gameOver) ? 0.62 : 0.0;
 
-  ciwsGain.gain.cancelScheduledValues(now);
-  ciwsGain.gain.linearRampToValueAtTime(targetGain, now + 0.02);
+  ciwsMaster.gain.cancelScheduledValues(now);
+  ciwsMaster.gain.linearRampToValueAtTime(targetGain, now + 0.015);
 }
 
 function playExplosionSound(radius, isGroundHit = false) {
@@ -468,10 +599,10 @@ function playExplosionSound(radius, isGroundHit = false) {
   bandpass.Q.value = 0.8;
 
   const base = Math.min(0.34, 0.11 + radius * 0.0028);
-  const finalGain = isGroundHit ? base * 1.44 : base;
+  const finalGain = isGroundHit ? base * 1.65 : base;
 
   gain.gain.setValueAtTime(finalGain, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + (isGroundHit ? 0.41 : 0.24));
+  gain.gain.exponentialRampToValueAtTime(0.001, now + (isGroundHit ? 0.52 : 0.24));
 
   noise.connect(lowpass);
   lowpass.connect(bandpass);
@@ -479,7 +610,7 @@ function playExplosionSound(radius, isGroundHit = false) {
   gain.connect(masterGain);
 
   noise.start(now);
-  noise.stop(now + (isGroundHit ? 0.43 : 0.26));
+  noise.stop(now + (isGroundHit ? 0.56 : 0.26));
 }
 
 /* =========================
@@ -496,12 +627,15 @@ function update(dt, nowMs) {
     return;
   }
 
-  ciws.turretAngle = Math.atan2(
-    state.pointerY - (ciws.y - ciws.bodyH - 4),
-    state.pointerX - ciws.x
-  );
+  const bodyH = getCIWSBodyH();
 
-  // 毎秒30発
+  for (const unit of state.ciwsUnits) {
+    unit.turretAngle = Math.atan2(
+      state.pointerY - (groundY() - bodyH - 4),
+      state.pointerX - unit.x
+    );
+  }
+
   if (state.firing && nowMs - state.lastShotAt > (1000 / 30)) {
     createBullet();
     state.lastShotAt = nowMs;
@@ -561,7 +695,7 @@ function update(dt, nowMs) {
     if (m.y >= groundY()) {
       createExplosion(
         m.x, groundY() - 6,
-        Math.max(70, w * 0.102),
+        Math.max(84, w * 0.122),
         "#fff7c8", "#ffb347",
         true
       );
@@ -598,7 +732,7 @@ function update(dt, nowMs) {
     if (d.y >= groundY()) {
       createExplosion(
         d.x, groundY() - 6,
-        Math.max(58, w * 0.086),
+        Math.max(70, w * 0.104),
         "#fff8d6", "#ffbf66",
         true
       );
@@ -612,6 +746,18 @@ function update(dt, nowMs) {
     ex.t += dt;
     if (ex.t >= ex.life) {
       state.explosions.splice(i, 1);
+    }
+  }
+
+  for (let i = state.sparks.length - 1; i >= 0; i--) {
+    const s = state.sparks[i];
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.vy += s.gravity * dt;
+    s.life -= dt;
+
+    if (s.life <= 0 || s.y > h + 20) {
+      state.sparks.splice(i, 1);
     }
   }
 
@@ -656,41 +802,45 @@ function drawBuildings() {
     ctx.fillRect(b.x, b.y, b.w, b.h);
 
     for (const win of b.windows) {
-      ctx.fillStyle = win.lit ? (Math.random() < 0.03 ? "#ffd080" : "#f7f1a1") : "#111111";
+      ctx.fillStyle = win.lit ? (Math.random() < 0.03 ? "#c89a55" : "#b8b06a") : "#111111";
       ctx.fillRect(win.x, win.y, win.w, win.h);
     }
   }
 }
 
 function drawCIWS() {
-  const baseX = ciws.x;
-  const baseY = ciws.y;
+  const bodyW = getCIWSBodyW();
+  const bodyH = getCIWSBodyH();
+  const domeR = bodyW * 0.48;
+  const baseY = groundY();
 
-  ctx.fillStyle = "#bebebe";
-  ctx.fillRect(
-    baseX - ciws.bodyW / 2,
-    baseY - ciws.bodyH,
-    ciws.bodyW,
-    ciws.bodyH
-  );
+  for (const unit of state.ciwsUnits) {
+    const baseX = unit.x;
 
-  const domeR = ciws.bodyW * 0.48;
+    ctx.fillStyle = "#bebebe";
+    ctx.fillRect(
+      baseX - bodyW / 2,
+      baseY - bodyH,
+      bodyW,
+      bodyH
+    );
 
-  ctx.beginPath();
-  ctx.fillStyle = "#d8d8d8";
-  ctx.arc(baseX, baseY - ciws.bodyH, domeR, Math.PI, 0);
-  ctx.closePath();
-  ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = "#d8d8d8";
+    ctx.arc(baseX, baseY - bodyH, domeR, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
 
-  ctx.fillStyle = "#cfcfcf";
-  ctx.fillRect(baseX - domeR * 0.92, baseY - ciws.bodyH, domeR * 1.84, 4);
+    ctx.fillStyle = "#cfcfcf";
+    ctx.fillRect(baseX - domeR * 0.92, baseY - bodyH, domeR * 1.84, 4);
 
-  ctx.save();
-  ctx.translate(baseX, baseY - ciws.bodyH + 2);
-  ctx.rotate(ciws.turretAngle);
-  ctx.fillStyle = "#eeeeee";
-  ctx.fillRect(0, -1.5, Math.max(16, w * 0.025), 3);
-  ctx.restore();
+    ctx.save();
+    ctx.translate(baseX, baseY - bodyH + 2);
+    ctx.rotate(unit.turretAngle);
+    ctx.fillStyle = "#eeeeee";
+    ctx.fillRect(0, -1.5, Math.max(16, w * 0.025), 3);
+    ctx.restore();
+  }
 }
 
 function drawBullets() {
@@ -759,15 +909,15 @@ function drawDrones() {
 function drawExplosions() {
   for (const ex of state.explosions) {
     const p = ex.t / ex.life;
-    const growth = ex.isGroundHit ? 1.5 : 1.2;
+    const growth = ex.isGroundHit ? 1.65 : 1.2;
     const r = ex.radius * (0.3 + p * growth);
 
     const grad = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, r);
     if (ex.isGroundHit) {
-      grad.addColorStop(0, "rgba(255,255,240,1)");
-      grad.addColorStop(0.2, ex.colorA);
-      grad.addColorStop(0.45, ex.colorB);
-      grad.addColorStop(0.75, "rgba(255,120,0,0.45)");
+      grad.addColorStop(0, "rgba(255,255,245,1)");
+      grad.addColorStop(0.16, ex.colorA);
+      grad.addColorStop(0.42, ex.colorB);
+      grad.addColorStop(0.72, "rgba(255,120,0,0.48)");
       grad.addColorStop(1, "rgba(255,80,0,0)");
     } else {
       grad.addColorStop(0, ex.colorA);
@@ -782,11 +932,32 @@ function drawExplosions() {
     ctx.fill();
 
     if (ex.isGroundHit) {
-      ctx.fillStyle = `rgba(255, 235, 180, ${0.25 * (1 - p)})`;
-      ctx.fillRect(ex.x - r * 0.9, groundY() - 4, r * 1.8, Math.max(6, r * 0.12));
+      ctx.fillStyle = `rgba(255, 235, 180, ${0.28 * (1 - p)})`;
+      ctx.fillRect(ex.x - r * 0.95, groundY() - 4, r * 1.9, Math.max(7, r * 0.13));
     }
 
     ctx.globalAlpha = 1;
+  }
+}
+
+function drawSparks() {
+  for (const s of state.sparks) {
+    const a = s.life / s.maxLife;
+
+    const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.size * 3);
+    grad.addColorStop(0, `rgba(255,255,240,${a})`);
+    grad.addColorStop(0.35, `rgba(255,220,140,${a * 0.95})`);
+    grad.addColorStop(1, "rgba(255,120,0,0)");
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -813,7 +984,7 @@ function drawUI() {
 
   const titleSize = Math.max(16, w * 0.018);
   const subSize = Math.max(14, w * 0.015);
-  const uiX = w - 280;
+  const uiX = w - 220;
 
   ctx.font = `bold ${titleSize}px ${UI_FONT}`;
   ctx.fillStyle = UI_AMBER;
@@ -863,6 +1034,7 @@ function render() {
   drawMissiles();
   drawDrones();
   drawExplosions();
+  drawSparks();
   drawAimPoint();
   drawUI();
 }
@@ -879,6 +1051,7 @@ function loop(ts) {
 
 generateCity();
 generateStars();
+initCIWSUnits();
 requestAnimationFrame(loop);
 </script>
 </body>
