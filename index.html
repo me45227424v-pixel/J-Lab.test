@@ -11,7 +11,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
 
 <style>
 :root{
@@ -97,13 +97,13 @@ body::before{
   z-index:11;
 }
 
-/* 左上時刻表示 */
+/* 左上日時 */
 .datetime{
   position:fixed;
   top:12px;
   left:14px;
   z-index:3;
-  font-size:20px;
+  font-size:34px;
   line-height:1.08;
   letter-spacing:0.08em;
   text-shadow:
@@ -130,9 +130,9 @@ body::before{
 
 .title{
   margin:0 0 36px 0;
-  font-family:"Share Tech Mono", monospace;
-  font-size:72px;
-  letter-spacing:0.15em;
+  font-family:"VT323", monospace;
+  font-size:48px;
+  letter-spacing:0.12em;
   text-transform:uppercase;
   text-shadow:
     0 0 5px rgba(0,217,79,0.40),
@@ -218,16 +218,16 @@ body::before{
   <div class="title">J-Lab</div>
 
   <div class="menu">
-    <a class="item" href="https://me45227424v-pixel.github.io/J-Lab.test/">
-      J-Lab.test
+    <a class="item" href="#" data-label="AAW">
+      AAW
     </a>
 
-    <a class="item" href="#">
-      Runaway-Hello
+    <a class="item" href="#" data-label="USW">
+      USW
     </a>
 
-    <a class="item" href="#">
-      Every-Step
+    <a class="item" href="#" data-label="SUW">
+      SUW
     </a>
   </div>
 </div>
@@ -343,10 +343,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const t = ctx.currentTime;
       const toneDuration = 0.1;
-
-      // 1セット:
-      // 500Hz 0.1秒 → 250Hz 0.1秒 → 0.2秒無音
-      // → 500Hz 0.1秒 → 250Hz 0.1秒 → 0.5秒無音
       const setLength = 1.1;
 
       for (let loop = 0; loop < 2; loop++) {
