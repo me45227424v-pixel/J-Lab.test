@@ -97,18 +97,19 @@ body::before{
   z-index:11;
 }
 
-/* ステータス */
-.status{
+/* 左上時刻表示 */
+.datetime{
   position:fixed;
   top:12px;
   left:14px;
   z-index:3;
   font-size:20px;
   line-height:1.08;
-  letter-spacing:0.04em;
+  letter-spacing:0.08em;
   text-shadow:
     0 0 4px rgba(0,217,79,0.32),
     0 0 10px rgba(0,217,79,0.10);
+  user-select:none;
 }
 
 /* メイン画面 */
@@ -209,26 +210,23 @@ body::before{
   </div>
 </div>
 
-<div class="status" id="status">
-MODE: STANDBY<br>
-LINK: ACTIVE<br>
-NODE: J-LAB<br>
-SEL : NONE
+<div class="datetime" id="datetime">
+  2026 04 11 19 32 30
 </div>
 
 <div class="screen" id="screen">
   <div class="title">J-Lab</div>
 
   <div class="menu">
-    <a class="item" href="https://me45227424v-pixel.github.io/J-Lab.test/" data-mode="TEST" data-node="CLOCK">
+    <a class="item" href="https://me45227424v-pixel.github.io/J-Lab.test/">
       J-Lab.test
     </a>
 
-    <a class="item" href="#" data-mode="INTERCEPT" data-node="TRACK">
+    <a class="item" href="#">
       Runaway-Hello
     </a>
 
-    <a class="item" href="#" data-mode="LOG" data-node="STEP">
+    <a class="item" href="#">
       Every-Step
     </a>
   </div>
@@ -239,34 +237,40 @@ SEL : NONE
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const items = document.querySelectorAll(".item");
-  const status = document.getElementById("status");
   const boot = document.getElementById("boot");
   const screen = document.getElementById("screen");
+  const datetimeEl = document.getElementById("datetime");
 
   let current = -1;
   let ctx = null;
   let activeOscillators = [];
   let activeGains = [];
 
+  function pad2(num) {
+    return String(num).padStart(2, "0");
+  }
+
+  function updateDateTime() {
+    const now = new Date();
+    const formatted =
+      now.getFullYear() + " " +
+      pad2(now.getMonth() + 1) + " " +
+      pad2(now.getDate()) + " " +
+      pad2(now.getHours()) + " " +
+      pad2(now.getMinutes()) + " " +
+      pad2(now.getSeconds());
+
+    datetimeEl.textContent = formatted;
+  }
+
   function setActive(i) {
     current = i;
     items.forEach(el => el.classList.remove("active"));
     items[i].classList.add("active");
-
-    status.innerHTML =
-      "MODE: " + items[i].dataset.mode + "<br>" +
-      "LINK: ACTIVE<br>" +
-      "NODE: " + items[i].dataset.node + "<br>" +
-      "SEL : " + items[i].textContent.trim();
   }
 
   function clearActive() {
     items.forEach(el => el.classList.remove("active"));
-    status.innerHTML =
-      "MODE: STANDBY<br>" +
-      "LINK: ACTIVE<br>" +
-      "NODE: J-LAB<br>" +
-      "SEL : NONE";
   }
 
   function ensureAudioContext() {
@@ -311,8 +315,8 @@ document.addEventListener("DOMContentLoaded", () => {
     o.frequency.setValueAtTime(freq, start);
 
     g.gain.setValueAtTime(0.0001, start);
-    g.gain.linearRampToValueAtTime(0.05, start + 0.008);
-    g.gain.setValueAtTime(0.05, start + duration - 0.01);
+    g.gain.linearRampToValueAtTime(0.05, start + 0.01);
+    g.gain.setValueAtTime(0.05, start + duration - 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
 
     o.connect(g);
@@ -331,39 +335,37 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function playBootBeepPattern() {
-  const audio = ensureAudioContext();
-  if (!audio) return;
+    const audio = ensureAudioContext();
+    if (!audio) return;
 
-  const startPattern = () => {
-    stopAllBeeps();
+    const startPattern = () => {
+      stopAllBeeps();
 
-    const t = ctx.currentTime;
-    const toneDuration = 0.1;
+      const t = ctx.currentTime;
+      const toneDuration = 0.1;
 
-    // 1セット:
-    // 500Hz(0.1) → 250Hz(0.1) → 0.2秒空白
-    // → 500Hz(0.1) → 250Hz(0.1) → 0.5秒空白
-    const setLength = 1.1;
+      // 1セット:
+      // 500Hz 0.1秒 → 250Hz 0.1秒 → 0.2秒無音
+      // → 500Hz 0.1秒 → 250Hz 0.1秒 → 0.5秒無音
+      const setLength = 1.1;
 
-    for (let loop = 0; loop < 2; loop++) {
-      const base = t + (loop * setLength);
+      for (let loop = 0; loop < 2; loop++) {
+        const base = t + (loop * setLength);
 
-      // 前半
-      tone(500, base, toneDuration);
-      tone(250, base + 0.1, toneDuration);
+        tone(500, base, toneDuration);
+        tone(250, base + 0.1, toneDuration);
 
-      // 0.2秒空白のあと後半
-      tone(500, base + 0.4, toneDuration);
-      tone(250, base + 0.5, toneDuration);
+        tone(500, base + 0.4, toneDuration);
+        tone(250, base + 0.5, toneDuration);
+      }
+    };
+
+    if (audio.state === "suspended") {
+      audio.resume().then(startPattern);
+    } else {
+      startPattern();
     }
-  };
-
-  if (audio.state === "suspended") {
-    audio.resume().then(startPattern);
-  } else {
-    startPattern();
   }
-}
 
   boot.addEventListener("click", () => {
     boot.classList.add("hidden");
@@ -410,6 +412,9 @@ document.addEventListener("DOMContentLoaded", () => {
       items[current].click();
     }
   });
+
+  updateDateTime();
+  setInterval(updateDateTime, 1000);
 });
 </script>
 
