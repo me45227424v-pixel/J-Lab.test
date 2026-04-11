@@ -21,6 +21,7 @@
       width: 100vw;
       height: 100vh;
       background: #000;
+      cursor: crosshair;
     }
   </style>
 </head>
@@ -50,6 +51,8 @@ const state = {
   pointerX: w * 0.5,
   pointerY: h * 0.35,
   firing: false,
+  mouseDown: false,
+  touchActive: false,
   lastShotAt: 0,
   lastTime: 0,
   missiles: [],
@@ -154,6 +157,16 @@ function setPointer(x, y) {
   state.pointerY = clamp(y, 0, groundY() - 5);
 }
 
+function refreshFireState() {
+  state.firing = !state.gameOver && (state.mouseDown || state.touchActive);
+}
+
+function stopAllFireInput() {
+  state.mouseDown = false;
+  state.touchActive = false;
+  state.firing = false;
+}
+
 canvas.addEventListener("mousemove", (e) => {
   const rect = canvas.getBoundingClientRect();
   setPointer(e.clientX - rect.left, e.clientY - rect.top);
@@ -163,6 +176,18 @@ canvas.addEventListener("mousedown", (e) => {
   initAudio();
   const rect = canvas.getBoundingClientRect();
   setPointer(e.clientX - rect.left, e.clientY - rect.top);
+  state.mouseDown = true;
+  refreshFireState();
+});
+
+window.addEventListener("mouseup", () => {
+  state.mouseDown = false;
+  refreshFireState();
+});
+
+canvas.addEventListener("mouseleave", () => {
+  state.mouseDown = false;
+  refreshFireState();
 });
 
 canvas.addEventListener("touchstart", (e) => {
@@ -173,6 +198,8 @@ canvas.addEventListener("touchstart", (e) => {
       e.touches[0].clientX - rect.left,
       e.touches[0].clientY - rect.top
     );
+    state.touchActive = true;
+    refreshFireState();
   }
   e.preventDefault();
 }, { passive: false });
@@ -184,21 +211,37 @@ canvas.addEventListener("touchmove", (e) => {
       e.touches[0].clientX - rect.left,
       e.touches[0].clientY - rect.top
     );
+    state.touchActive = true;
+    refreshFireState();
   }
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener("touchend", (e) => {
+  state.touchActive = e.touches.length > 0;
+  refreshFireState();
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener("touchcancel", (e) => {
+  state.touchActive = false;
+  refreshFireState();
   e.preventDefault();
 }, { passive: false });
 
 window.addEventListener("keydown", (e) => {
   if (e.code === "Space") {
     initAudio();
-    state.firing = true;
+    state.mouseDown = true;
+    refreshFireState();
     e.preventDefault();
   }
 });
 
 window.addEventListener("keyup", (e) => {
   if (e.code === "Space") {
-    state.firing = false;
+    state.mouseDown = false;
+    refreshFireState();
     e.preventDefault();
   }
 });
@@ -214,12 +257,17 @@ function createBullet() {
   // 真上に撃つと画面上端まで約3秒
   const speed = h / 3;
 
+  const vx = (dx / len) * speed;
+  const vy = (dy / len) * speed;
+
   state.bullets.push({
     x: sx,
     y: sy,
-    vx: (dx / len) * speed,
-    vy: (dy / len) * speed,
-    r: Math.max(1.3, w * 0.0012),
+    px: sx,
+    py: sy,
+    vx,
+    vy,
+    r: Math.max(1.5, w * 0.0013),
     life: 3.3
   });
 
@@ -311,7 +359,6 @@ function initAudio() {
     masterGain.gain.value = 0.55;
     masterGain.connect(audioCtx.destination);
 
-    // CIWS連射音：低域ノイズ主体の「ブゥーーー」
     ciwsNoise = createNoiseSource();
     ciwsFilter = audioCtx.createBiquadFilter();
     ciwsFilter.type = "bandpass";
@@ -415,6 +462,8 @@ function update(dt, nowMs) {
 
   for (let i = state.bullets.length - 1; i >= 0; i--) {
     const b = state.bullets[i];
+    b.px = b.x;
+    b.py = b.y;
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     b.life -= dt;
@@ -490,7 +539,7 @@ function update(dt, nowMs) {
 
   if (state.damage >= 100) {
     state.gameOver = true;
-    state.firing = false;
+    stopAllFireInput();
     updateCIWSSound();
   }
 }
@@ -566,19 +615,63 @@ function drawCIWS() {
 
 function drawBullets() {
   for (const b of state.bullets) {
-    const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * 2.5);
-    grad.addColorStop(0, "#ff6666");
-    grad.addColorStop(0.45, "#ff2f6d");
-    grad.addColorStop(1, "rgba(255,0,100,0)");
+    const dx = b.x - b.px;
+    const dy = b.y - b.py;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = dx / len;
+    const ny = dy / len;
+
+    // 1フレーム分より長めにして、連射時にビーム状に見せる
+    const trailLen = Math.max(12, h * 0.028);
+    const tx = b.x - nx * trailLen;
+    const ty = b.y - ny * trailLen;
+
+    // 外側グロー
+    const glowGrad = ctx.createLinearGradient(tx, ty, b.x, b.y);
+    glowGrad.addColorStop(0, "rgba(255, 0, 120, 0)");
+    glowGrad.addColorStop(0.25, "rgba(255, 70, 170, 0.35)");
+    glowGrad.addColorStop(0.7, "rgba(255, 170, 220, 0.8)");
+    glowGrad.addColorStop(1, "rgba(255, 240, 250, 1)");
+
+    ctx.strokeStyle = glowGrad;
+    ctx.lineCap = "round";
+    ctx.lineWidth = b.r * 4.8;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+
+    // 芯の明るい線
+    const coreGrad = ctx.createLinearGradient(tx, ty, b.x, b.y);
+    coreGrad.addColorStop(0, "rgba(255, 180, 230, 0)");
+    coreGrad.addColorStop(0.35, "rgba(255, 210, 240, 0.7)");
+    coreGrad.addColorStop(0.8, "rgba(255, 245, 250, 1)");
+    coreGrad.addColorStop(1, "rgba(255, 255, 255, 1)");
+
+    ctx.strokeStyle = coreGrad;
+    ctx.lineWidth = Math.max(1.3, b.r * 2.1);
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+
+    // 先端の発光球
+    const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * 5.2);
+    grad.addColorStop(0, "rgba(255,255,255,1)");
+    grad.addColorStop(0.18, "rgba(255,245,250,1)");
+    grad.addColorStop(0.42, "rgba(255,190,230,0.95)");
+    grad.addColorStop(0.72, "rgba(255,80,170,0.55)");
+    grad.addColorStop(1, "rgba(255,0,120,0)");
 
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.arc(b.x, b.y, b.r * 2.5, 0, Math.PI * 2);
+    ctx.arc(b.x, b.y, b.r * 5.2, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#ff7474";
+    // 中央コア
+    ctx.fillStyle = "#fff7fb";
     ctx.beginPath();
-    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.arc(b.x, b.y, b.r * 1.15, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -654,7 +747,7 @@ function drawUI() {
 
   ctx.font = `bold ${titleSize}px ${UI_FONT}`;
   ctx.fillStyle = UI_GREEN;
-  ctx.fillText("FIRE : SPACE KEY", uiX, 20);
+  ctx.fillText("FIRE : TOUCH / MOUSE", uiX, 20);
 
   ctx.fillStyle = UI_AMBER;
   ctx.fillText(`SCORE : ${state.score}`, uiX, 20 + titleSize + 8);
