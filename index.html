@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>J-Lab Tactical Display</title>
@@ -11,21 +14,30 @@
 
 <style>
 :root{
-  --bg:#000;
+  --bg:#000000;
   --green:#00d94f;
-  --green-dim:rgba(0,217,79,0.3);
+  --green-dim:rgba(0,217,79,0.30);
+  --green-glow:rgba(0,217,79,0.28);
   --amber:#ffb347;
+  --amber-dim:rgba(255,179,71,0.22);
+  --amber-bg:rgba(255,179,71,0.10);
 }
 
-body{
+*{
+  box-sizing:border-box;
+  -webkit-tap-highlight-color:transparent;
+}
+
+html,body{
   margin:0;
+  width:100%;
+  min-height:100%;
   background:#000;
   color:var(--green);
-  font-family:"VT323",monospace;
   overflow:hidden;
+  font-family:"VT323", monospace;
 }
 
-/* スキャンライン */
 body::before{
   content:"";
   position:fixed;
@@ -33,50 +45,68 @@ body::before{
   pointer-events:none;
   background:repeating-linear-gradient(
     to bottom,
-    rgba(0,217,79,0.02) 0px,
-    rgba(0,217,79,0.02) 1px,
+    rgba(0,217,79,0.020) 0px,
+    rgba(0,217,79,0.020) 1px,
     transparent 1px,
     transparent 3px
   );
 }
 
-/* BOOT */
-.boot{
-  position:fixed;
-  inset:0;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  background:#000;
-  font-size:24px;
-  text-align:center;
-  z-index:10;
-}
-.hidden{display:none;}
-
-/* 上部ライン */
 .boot-line{
   position:fixed;
   top:0;
   left:0;
-  height:2px;
   width:0;
+  height:2px;
   background:var(--green);
-  animation:scan 0.8s forwards;
+  box-shadow:0 0 6px var(--green-glow);
+  animation:scan 0.8s ease forwards;
+  z-index:4;
 }
-@keyframes scan{to{width:100%;}}
 
-/* ステータス */
+@keyframes scan{
+  to{ width:100%; }
+}
+
+.boot{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#000;
+  color:var(--green);
+  text-align:center;
+  font-size:24px;
+  line-height:1.4;
+  letter-spacing:0.06em;
+  text-shadow:
+    0 0 4px rgba(0,217,79,0.35),
+    0 0 10px rgba(0,217,79,0.12);
+  z-index:10;
+  opacity:1;
+  visibility:visible;
+  transition:opacity 0.35s ease, visibility 0.35s ease;
+}
+
+.boot.hidden{
+  opacity:0;
+  visibility:hidden;
+}
+
 .status{
   position:fixed;
   top:12px;
   left:14px;
+  z-index:3;
   font-size:20px;
-  line-height:1.1;
-  text-shadow:0 0 4px rgba(0,217,79,0.3);
+  line-height:1.08;
+  letter-spacing:0.04em;
+  text-shadow:
+    0 0 4px rgba(0,217,79,0.32),
+    0 0 10px rgba(0,217,79,0.10);
 }
 
-/* 中央 */
 .screen{
   min-height:100vh;
   display:flex;
@@ -87,60 +117,77 @@ body::before{
 }
 
 .title{
-  font-family:"Share Tech Mono",monospace;
+  margin:0 0 36px 0;
+  font-family:"Share Tech Mono", monospace;
   font-size:72px;
   letter-spacing:0.15em;
-  margin-bottom:36px;
-  text-shadow:0 0 8px rgba(0,217,79,0.3);
+  text-transform:uppercase;
+  text-shadow:
+    0 0 5px rgba(0,217,79,0.40),
+    0 0 12px rgba(0,217,79,0.14);
 }
 
 .menu{
   width:520px;
+  max-width:84vw;
 }
 
 .item{
-  display:block;
   position:relative;
-  padding:12px 16px 12px 40px;
+  display:block;
+  padding:12px 16px 12px 42px;
   font-size:34px;
+  line-height:1.05;
   color:var(--green);
   text-decoration:none;
   border-top:1px solid var(--green-dim);
-  text-shadow:0 0 6px rgba(0,217,79,0.2);
+  text-shadow:
+    0 0 4px rgba(0,217,79,0.26),
+    0 0 8px rgba(0,217,79,0.10);
+  user-select:none;
+}
+
+.item:last-child{
+  border-bottom:1px solid var(--green-dim);
 }
 
 .item::before{
+  content:" ";
   position:absolute;
   left:12px;
-  content:" ";
+  top:50%;
+  transform:translateY(-50%);
 }
 
 .item.active{
   color:var(--amber);
-  background:rgba(255,179,71,0.1);
+  background:var(--amber-bg);
+  border-top-color:var(--amber-dim);
+  text-shadow:
+    0 0 4px rgba(255,179,71,0.40),
+    0 0 10px rgba(255,179,71,0.16);
 }
 
 .item.active::before{
   content:">";
 }
 
-/* フッター */
 .footer{
   position:fixed;
-  bottom:14px;
   right:14px;
+  bottom:14px;
   font-size:18px;
-  opacity:0.7;
+  opacity:0.78;
+  text-shadow:0 0 4px rgba(0,217,79,0.20);
 }
 </style>
 </head>
-
 <body>
 
 <div class="boot" id="boot">
-SYSTEM INIT...<br>
-LINK CHECK...<br>
-NODE ONLINE...
+  SYSTEM INIT...<br>
+  LINK CHECK...<br>
+  NODE ONLINE...
 </div>
 
 <div class="boot-line"></div>
@@ -153,7 +200,6 @@ SEL : NONE
 </div>
 
 <div class="screen">
-
   <div class="title">J-Lab</div>
 
   <div class="menu">
@@ -169,118 +215,145 @@ SEL : NONE
       Every-Step
     </a>
   </div>
-
 </div>
 
 <div class="footer">SYSTEM READY</div>
 
 <script>
-const items=document.querySelectorAll(".item");
-const status=document.getElementById("status");
-const boot=document.getElementById("boot");
+document.addEventListener("DOMContentLoaded", () => {
+  const items = document.querySelectorAll(".item");
+  const status = document.getElementById("status");
+  const boot = document.getElementById("boot");
 
-let current=-1;
-let ctx;
-let activeOscillators=[];
-let activeGains=[];
+  let current = -1;
+  let ctx = null;
+  let activeOscillators = [];
+  let activeGains = [];
 
-setTimeout(()=>boot.classList.add("hidden"),1200);
+  setTimeout(() => {
+    boot.classList.add("hidden");
+  }, 1200);
 
-/* ステータス */
-function setActive(i){
-  current=i;
-  items.forEach(el=>el.classList.remove("active"));
-  items[i].classList.add("active");
+  function setActive(i) {
+    current = i;
+    items.forEach(el => el.classList.remove("active"));
+    items[i].classList.add("active");
 
-  status.innerHTML=
-`MODE: ${items[i].dataset.mode}
-LINK: ACTIVE
-NODE: ${items[i].dataset.node}
-SEL : ${items[i].textContent}`;
-}
+    status.innerHTML =
+      "MODE: " + items[i].dataset.mode + "<br>" +
+      "LINK: ACTIVE<br>" +
+      "NODE: " + items[i].dataset.node + "<br>" +
+      "SEL : " + items[i].textContent.trim();
+  }
 
-function clearActive(){
-  items.forEach(el=>el.classList.remove("active"));
-  status.innerHTML=
-`MODE: STANDBY
-LINK: ACTIVE
-NODE: J-LAB
-SEL : NONE`;
-}
+  function clearActive() {
+    items.forEach(el => el.classList.remove("active"));
+    status.innerHTML =
+      "MODE: STANDBY<br>" +
+      "LINK: ACTIVE<br>" +
+      "NODE: J-LAB<br>" +
+      "SEL : NONE";
+  }
 
-/* 音停止 */
-function stopAllBeeps(){
-  const now=ctx?ctx.currentTime:0;
-  activeGains.forEach(g=>{
-    try{g.gain.setValueAtTime(0.0001,now);}catch(e){}
+  function stopAllBeeps() {
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    activeGains.forEach(g => {
+      try {
+        g.gain.cancelScheduledValues(now);
+        g.gain.setValueAtTime(0.0001, now);
+      } catch (e) {}
+    });
+
+    activeOscillators.forEach(o => {
+      try {
+        o.stop();
+      } catch (e) {}
+    });
+
+    activeOscillators = [];
+    activeGains = [];
+  }
+
+  function beep() {
+    if (!ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      ctx = new AudioCtx();
+    }
+
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+
+    stopAllBeeps();
+
+    const t = ctx.currentTime;
+
+    function tone(freq, start) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+
+      o.type = "sine";
+      o.frequency.setValueAtTime(freq, start);
+
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.linearRampToValueAtTime(0.05, start + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 0.10);
+
+      o.connect(g);
+      g.connect(ctx.destination);
+
+      o.start(start);
+      o.stop(start + 0.10);
+
+      activeOscillators.push(o);
+      activeGains.push(g);
+    }
+
+    tone(500, t);
+    tone(250, t + 0.10);
+
+    const secondSetStart = t + 0.40;
+    tone(500, secondSetStart);
+    tone(250, secondSetStart + 0.10);
+  }
+
+  items.forEach((el, i) => {
+    el.addEventListener("pointerenter", () => {
+      setActive(i);
+      beep();
+    });
+
+    el.addEventListener("pointerleave", () => {
+      clearActive();
+    });
+
+    el.addEventListener("click", () => {
+      setActive(i);
+      beep();
+    });
   });
-  activeOscillators.forEach(o=>{
-    try{o.stop(now);}catch(e){}
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      current = (current + 1 + items.length) % items.length;
+      setActive(current);
+      beep();
+    }
+
+    if (e.key === "ArrowUp") {
+      current = (current - 1 + items.length) % items.length;
+      setActive(current);
+      beep();
+    }
+
+    if (e.key === "Enter" && current >= 0) {
+      items[current].click();
+    }
   });
-  activeOscillators=[];
-  activeGains=[];
-}
-
-/* ビープ */
-function beep(){
-  if(!ctx) ctx=new (window.AudioContext||window.webkitAudioContext)();
-  if(ctx.state==="suspended") ctx.resume();
-
-  stopAllBeeps();
-
-  const t=ctx.currentTime;
-
-  function tone(f,start){
-    const o=ctx.createOscillator();
-    const g=ctx.createGain();
-
-    o.type="sine";
-    o.frequency.value=f;
-
-    o.connect(g);
-    g.connect(ctx.destination);
-
-    g.gain.setValueAtTime(0.001,start);
-    g.gain.linearRampToValueAtTime(0.05,start+0.01);
-    g.gain.exponentialRampToValueAtTime(0.001,start+0.1);
-
-    o.start(start);
-    o.stop(start+0.1);
-
-    activeOscillators.push(o);
-    activeGains.push(g);
-  }
-
-  // 1セット目
-  tone(500,t);
-  tone(250,t+0.1);
-
-  // 0.2秒空けて2セット目
-  const s2=t+0.2+0.2;
-  tone(500,s2);
-  tone(250,s2+0.1);
-}
-
-/* ポインタ */
-items.forEach((el,i)=>{
-  el.addEventListener("pointerenter",()=>{setActive(i);beep();});
-  el.addEventListener("pointerleave",()=>clearActive());
-  el.addEventListener("click",()=>{setActive(i);beep();});
-});
-
-/* キーボード */
-document.addEventListener("keydown",(e)=>{
-  if(e.key==="ArrowDown"){
-    current=(current+1+items.length)%items.length;
-    setActive(current);beep();
-  }
-  if(e.key==="ArrowUp"){
-    current=(current-1+items.length)%items.length;
-    setActive(current);beep();
-  }
-  if(e.key==="Enter"&&current>=0){
-    items[current].click();
-  }
 });
 </script>
 
