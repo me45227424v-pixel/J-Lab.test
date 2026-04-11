@@ -233,24 +233,28 @@ function beep(){
   if(!ctx) ctx=new (window.AudioContext||window.webkitAudioContext)();
   const t=ctx.currentTime;
 
-  function tone(f,start){
+  function tone(freq,start){
     const o=ctx.createOscillator();
     const g=ctx.createGain();
+
     o.type="sine";
-    o.frequency.value=f;
+    o.frequency.value=freq;
+
     o.connect(g);
     g.connect(ctx.destination);
 
+    // 音量エンベロープ（クリック音防止）
     g.gain.setValueAtTime(0.001,start);
-    g.gain.linearRampToValueAtTime(0.05,start+0.02);
-    g.gain.exponentialRampToValueAtTime(0.001,start+0.2);
+    g.gain.linearRampToValueAtTime(0.06,start+0.01);
+    g.gain.exponentialRampToValueAtTime(0.001,start+0.1);
 
     o.start(start);
-    o.stop(start+0.2);
+    o.stop(start+0.1);
   }
 
-  tone(400,t);
-  tone(250,t+0.2);
+  // 800Hz → 500Hz（各0.1秒）
+  tone(800,t);
+  tone(500,t+0.1);
 }
 
 /* ポインタ */
