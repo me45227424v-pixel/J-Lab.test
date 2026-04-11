@@ -331,37 +331,39 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function playBootBeepPattern() {
-    const audio = ensureAudioContext();
-    if (!audio) return;
+  const audio = ensureAudioContext();
+  if (!audio) return;
 
-    const startPattern = () => {
-      stopAllBeeps();
+  const startPattern = () => {
+    stopAllBeeps();
 
-      const t = ctx.currentTime;
-      const toneDuration = 0.1;
+    const t = ctx.currentTime;
+    const toneDuration = 0.1;
 
-      /* 1セット内の2音は連続 */
-      const secondToneOffset = 0.09;
+    // 1セット:
+    // 500Hz(0.1) → 250Hz(0.1) → 0.2秒空白
+    // → 500Hz(0.1) → 250Hz(0.1) → 0.5秒空白
+    const setLength = 1.1;
 
-      /* セット間だけ0.3秒空白 */
-      const setLength = 0.49;
-      /* 0.1 + 0.09 で実質 0.19秒ほど音
-         → 次セット開始まで 0.49秒
-         → 約0.30秒の無音 */
+    for (let loop = 0; loop < 2; loop++) {
+      const base = t + (loop * setLength);
 
-      for (let loop = 0; loop < 4; loop++) {
-        const base = t + (loop * setLength);
-        tone(500, base, toneDuration);
-        tone(250, base + secondToneOffset, toneDuration);
-      }
-    };
+      // 前半
+      tone(500, base, toneDuration);
+      tone(250, base + 0.1, toneDuration);
 
-    if (audio.state === "suspended") {
-      audio.resume().then(startPattern);
-    } else {
-      startPattern();
+      // 0.2秒空白のあと後半
+      tone(500, base + 0.4, toneDuration);
+      tone(250, base + 0.5, toneDuration);
     }
+  };
+
+  if (audio.state === "suspended") {
+    audio.resume().then(startPattern);
+  } else {
+    startPattern();
   }
+}
 
   boot.addEventListener("click", () => {
     boot.classList.add("hidden");
