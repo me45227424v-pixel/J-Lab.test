@@ -1,172 +1,170 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nixie Clock Test</title>
-  <style>
-    html, body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-      font-family: "Courier New", monospace;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J-Lab</title>
 
-    body {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
+<style>
+body {
+  margin: 0;
+  background: #000;
+  color: #00ff66;
+  font-family: "Courier New", monospace;
+}
 
-    .clock-wrap {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 18px;
-    }
+.screen {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 16vh;
+}
 
-    .label {
-      color: rgba(255, 170, 70, 0.45);
-      font-size: 14px;
-      letter-spacing: 0.35em;
-      text-transform: uppercase;
-      text-shadow: 0 0 8px rgba(255, 140, 40, 0.25);
-    }
+.title {
+  font-size: clamp(28px, 6vw, 64px);
+  letter-spacing: 0.12em;
+  margin-bottom: 40px;
+}
 
-    .clock {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 28px 34px;
-      border: 2px solid rgba(255, 140, 40, 0.18);
-      border-radius: 18px;
-      background:
-        radial-gradient(circle at center, rgba(255, 120, 20, 0.05), rgba(0,0,0,0) 65%),
-        linear-gradient(to bottom, rgba(255,255,255,0.03), rgba(255,255,255,0));
-      box-shadow:
-        inset 0 0 30px rgba(255, 120, 20, 0.08),
-        0 0 24px rgba(255, 120, 20, 0.08);
-    }
+/* ステータス */
+.status {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font-size: 12px;
+  color: rgba(0,255,100,0.6);
+  line-height: 1.6;
+}
 
-    .digit-group {
-      display: flex;
-      gap: 8px;
-    }
+/* メニュー */
+.menu {
+  width: 80%;
+  max-width: 520px;
+}
 
-    .digit, .colon {
-      position: relative;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      color: #ff9b2f;
-      user-select: none;
-      -webkit-user-select: none;
-    }
+.item {
+  display: block;
+  padding: 12px 0;
+  border-top: 1px solid rgba(0,255,100,0.25);
+  text-decoration: none;
+  color: #00ff66;
+  font-size: clamp(16px, 4vw, 22px);
+}
 
-    .digit {
-      width: 0.9em;
-      font-size: clamp(54px, 12vw, 132px);
-      font-weight: 400;
-      line-height: 1;
-      text-shadow:
-        0 0 4px rgba(255, 160, 60, 0.85),
-        0 0 10px rgba(255, 140, 40, 0.75),
-        0 0 22px rgba(255, 110, 20, 0.55),
-        0 0 42px rgba(255, 90, 10, 0.35);
-      filter: saturate(1.1);
-    }
+.item:last-child {
+  border-bottom: 1px solid rgba(0,255,100,0.25);
+}
 
-    .digit::before {
-      content: "";
-      position: absolute;
-      inset: -0.16em -0.08em;
-      border-radius: 18px;
-      border: 1px solid rgba(255, 140, 40, 0.14);
-      box-shadow:
-        inset 0 0 14px rgba(255, 130, 30, 0.08),
-        0 0 8px rgba(255, 130, 30, 0.06);
-      pointer-events: none;
-    }
+/* アクティブ（アンバー） */
+.active {
+  color: #ffb347;
+  background: rgba(255,180,70,0.08);
+}
 
-    .digit::after {
-      content: "";
-      position: absolute;
-      width: 0.08em;
-      height: 1.2em;
-      background: linear-gradient(
-        to bottom,
-        rgba(255,255,255,0.10),
-        rgba(255,160,60,0.20),
-        rgba(255,255,255,0.06)
-      );
-      opacity: 0.22;
-      filter: blur(0.4px);
-      pointer-events: none;
-    }
+/* 起動ライン */
+.line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0;
+  background: #00ff66;
+  animation: scan 1s ease forwards;
+}
 
-    .colon {
-      font-size: clamp(44px, 9vw, 96px);
-      margin: 0 2px;
-      transform: translateY(-0.02em);
-      text-shadow:
-        0 0 4px rgba(255, 160, 60, 0.75),
-        0 0 10px rgba(255, 140, 40, 0.65),
-        0 0 22px rgba(255, 110, 20, 0.45);
-    }
+@keyframes scan {
+  to { width: 100%; }
+}
 
-    .hint {
-      color: rgba(255, 170, 70, 0.6);
-      font-size: 14px;
-      letter-spacing: 0.08em;
-      text-align: center;
-    }
-  </style>
+.footer {
+  position: absolute;
+  bottom: 18px;
+  font-size: 12px;
+  color: rgba(0,255,100,0.4);
+}
+</style>
 </head>
+
 <body>
-  <div class="clock-wrap">
-    <div class="label">NIXIE CLOCK TEST</div>
-    <div class="clock" id="clock" aria-label="digital clock">
-      <div class="digit-group">
-        <div class="digit" id="h1">0</div>
-        <div class="digit" id="h2">0</div>
-      </div>
-      <div class="colon">:</div>
-      <div class="digit-group">
-        <div class="digit" id="m1">0</div>
-        <div class="digit" id="m2">0</div>
-      </div>
-      <div class="colon">:</div>
-      <div class="digit-group">
-        <div class="digit" id="s1">0</div>
-        <div class="digit" id="s2">0</div>
-      </div>
-    </div>
-    <div class="hint">秒が変われば JavaScript は動いている</div>
+
+<div class="line"></div>
+
+<div class="status">
+MODE: STANDBY<br>
+LINK: ACTIVE<br>
+NODE: J-LAB
+</div>
+
+<div class="screen">
+
+  <div class="title">J-Lab</div>
+
+  <div class="menu">
+    <a class="item active" href="https://me45227424v-pixel.github.io/J-Lab.test/">
+      J-Lab.test
+    </a>
+
+    <a class="item" href="#">
+      Runaway-Hello
+    </a>
+
+    <a class="item" href="#">
+      Every-Step
+    </a>
   </div>
 
-  <script>
-    function pad2(num) {
-      return String(num).padStart(2, "0");
-    }
+  <div class="footer">SYSTEM READY</div>
 
-    function updateClock() {
-      const now = new Date();
-      const hh = pad2(now.getHours());
-      const mm = pad2(now.getMinutes());
-      const ss = pad2(now.getSeconds());
+</div>
 
-      document.getElementById("h1").textContent = hh[0];
-      document.getElementById("h2").textContent = hh[1];
-      document.getElementById("m1").textContent = mm[0];
-      document.getElementById("m2").textContent = mm[1];
-      document.getElementById("s1").textContent = ss[0];
-      document.getElementById("s2").textContent = ss[1];
-    }
+<script>
+const items = document.querySelectorAll(".item");
+let current = 0;
 
-    updateClock();
-    setInterval(updateClock, 200);
-  </script>
+/* アクティブ更新 */
+function updateActive() {
+  items.forEach(el => el.classList.remove("active"));
+  items[current].classList.add("active");
+}
+
+/* 簡易ビープ */
+function beep() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = ctx.createOscillator();
+  osc.type = "square";
+  osc.frequency.value = 800;
+  osc.connect(ctx.destination);
+  osc.start();
+  setTimeout(() => osc.stop(), 50);
+}
+
+/* キー操作 */
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") {
+    current = (current + 1) % items.length;
+    updateActive();
+    beep();
+  }
+  if (e.key === "ArrowUp") {
+    current = (current - 1 + items.length) % items.length;
+    updateActive();
+    beep();
+  }
+  if (e.key === "Enter") {
+    items[current].click();
+  }
+});
+
+/* タップ操作 */
+items.forEach((item, index) => {
+  item.addEventListener("click", () => {
+    current = index;
+    updateActive();
+    beep();
+  });
+});
+</script>
+
 </body>
 </html>
