@@ -1,170 +1,302 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>J-Lab</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>J-Lab</title>
 
-<style>
-body {
-  margin: 0;
-  background: #000;
-  color: #00ff66;
-  font-family: "Courier New", monospace;
-}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500&display=swap" rel="stylesheet">
 
-.screen {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 16vh;
-}
+  <style>
+    :root {
+      --bg: #000000;
+      --green: #00ff66;
+      --green-dim: rgba(0, 255, 102, 0.35);
+      --green-soft: rgba(0, 255, 102, 0.10);
+      --amber: #ffb347;
+      --amber-dim: rgba(255, 179, 71, 0.28);
+      --amber-soft: rgba(255, 179, 71, 0.10);
+    }
 
-.title {
-  font-size: clamp(28px, 6vw, 64px);
-  letter-spacing: 0.12em;
-  margin-bottom: 40px;
-}
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
 
-/* ステータス */
-.status {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  font-size: 12px;
-  color: rgba(0,255,100,0.6);
-  line-height: 1.6;
-}
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--green);
+      font-family: "Pixelify Sans", "Courier New", monospace;
+    }
 
-/* メニュー */
-.menu {
-  width: 80%;
-  max-width: 520px;
-}
+    body {
+      overflow: hidden;
+    }
 
-.item {
-  display: block;
-  padding: 12px 0;
-  border-top: 1px solid rgba(0,255,100,0.25);
-  text-decoration: none;
-  color: #00ff66;
-  font-size: clamp(16px, 4vw, 22px);
-}
+    .scan-line {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background: var(--green);
+      box-shadow: 0 0 6px rgba(0,255,102,0.45);
+      animation: bootScan 0.9s ease-out forwards;
+    }
 
-.item:last-child {
-  border-bottom: 1px solid rgba(0,255,100,0.25);
-}
+    @keyframes bootScan {
+      to { width: 100%; }
+    }
 
-/* アクティブ（アンバー） */
-.active {
-  color: #ffb347;
-  background: rgba(255,180,70,0.08);
-}
+    .status {
+      position: fixed;
+      top: 10px;
+      left: 12px;
+      font-size: clamp(13px, 1.6vw, 18px);
+      line-height: 1.45;
+      letter-spacing: 0.05em;
+      color: rgba(0, 255, 102, 0.72);
+      text-shadow: 0 0 3px rgba(0,255,102,0.18);
+      user-select: none;
+    }
 
-/* 起動ライン */
-.line {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 2px;
-  width: 0;
-  background: #00ff66;
-  animation: scan 1s ease forwards;
-}
+    .screen {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding-top: 17vh;
+    }
 
-@keyframes scan {
-  to { width: 100%; }
-}
+    .title {
+      margin: 0 0 42px 0;
+      font-size: clamp(48px, 7vw, 96px);
+      font-weight: 400;
+      letter-spacing: 0.10em;
+      color: var(--green);
+      text-shadow:
+        0 0 4px rgba(0,255,102,0.12),
+        0 0 8px rgba(0,255,102,0.08);
+      user-select: none;
+    }
 
-.footer {
-  position: absolute;
-  bottom: 18px;
-  font-size: 12px;
-  color: rgba(0,255,100,0.4);
-}
-</style>
+    .menu {
+      width: min(540px, 78vw);
+    }
+
+    .item {
+      position: relative;
+      display: block;
+      padding: 15px 18px;
+      border-top: 1px solid var(--green-dim);
+      color: var(--green);
+      text-decoration: none;
+      font-size: clamp(24px, 3.2vw, 40px);
+      line-height: 1.1;
+      letter-spacing: 0.03em;
+      background: transparent;
+      transition:
+        color 0.12s ease,
+        background-color 0.12s ease,
+        border-color 0.12s ease,
+        text-shadow 0.12s ease;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .item:last-child {
+      border-bottom: 1px solid var(--green-dim);
+    }
+
+    .item::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-left: 1px solid transparent;
+      border-right: 1px solid transparent;
+      transition: border-color 0.12s ease;
+    }
+
+    .item.active {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-top-color: var(--amber-dim);
+      text-shadow:
+        0 0 4px rgba(255,179,71,0.18),
+        0 0 8px rgba(255,179,71,0.08);
+    }
+
+    .item.active::before {
+      border-left-color: var(--amber-dim);
+      border-right-color: var(--amber-dim);
+    }
+
+    .item.active + .item {
+      border-top-color: var(--amber-dim);
+    }
+
+    .footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 16px;
+      text-align: center;
+      font-size: clamp(14px, 1.4vw, 18px);
+      color: rgba(0,255,102,0.42);
+      letter-spacing: 0.08em;
+      user-select: none;
+    }
+
+    @media (hover: none) {
+      .item {
+        padding: 16px 18px;
+      }
+    }
+  </style>
 </head>
-
 <body>
+  <div class="scan-line"></div>
 
-<div class="line"></div>
-
-<div class="status">
-MODE: STANDBY<br>
-LINK: ACTIVE<br>
-NODE: J-LAB
-</div>
-
-<div class="screen">
-
-  <div class="title">J-Lab</div>
-
-  <div class="menu">
-    <a class="item active" href="https://me45227424v-pixel.github.io/J-Lab.test/">
-      J-Lab.test
-    </a>
-
-    <a class="item" href="#">
-      Runaway-Hello
-    </a>
-
-    <a class="item" href="#">
-      Every-Step
-    </a>
+  <div class="status">
+    MODE: STANDBY<br>
+    LINK: ACTIVE<br>
+    NODE: J-LAB
   </div>
+
+  <main class="screen">
+    <h1 class="title">J-Lab</h1>
+
+    <nav class="menu" aria-label="J-Lab repositories">
+      <a class="item" href="https://me45227424v-pixel.github.io/J-Lab.test/">
+        J-Lab.test
+      </a>
+
+      <a class="item" href="#">
+        Runaway-Hello
+      </a>
+
+      <a class="item" href="#">
+        Every-Step
+      </a>
+    </nav>
+  </main>
 
   <div class="footer">SYSTEM READY</div>
 
-</div>
+  <script>
+    const items = Array.from(document.querySelectorAll(".item"));
+    let activeIndex = -1;
+    let audioCtx = null;
 
-<script>
-const items = document.querySelectorAll(".item");
-let current = 0;
+    function setActive(index) {
+      activeIndex = index;
+      items.forEach((item, i) => {
+        item.classList.toggle("active", i === index);
+      });
+    }
 
-/* アクティブ更新 */
-function updateActive() {
-  items.forEach(el => el.classList.remove("active"));
-  items[current].classList.add("active");
-}
+    function clearActive() {
+      activeIndex = -1;
+      items.forEach((item) => item.classList.remove("active"));
+    }
 
-/* 簡易ビープ */
-function beep() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  osc.type = "square";
-  osc.frequency.value = 800;
-  osc.connect(ctx.destination);
-  osc.start();
-  setTimeout(() => osc.stop(), 50);
-}
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+        }
+      }
+      return audioCtx;
+    }
 
-/* キー操作 */
-document.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowDown") {
-    current = (current + 1) % items.length;
-    updateActive();
-    beep();
-  }
-  if (e.key === "ArrowUp") {
-    current = (current - 1 + items.length) % items.length;
-    updateActive();
-    beep();
-  }
-  if (e.key === "Enter") {
-    items[current].click();
-  }
-});
+    function playBeepSequence() {
+      const ctx = ensureAudioContext();
+      if (!ctx) return;
 
-/* タップ操作 */
-items.forEach((item, index) => {
-  item.addEventListener("click", () => {
-    current = index;
-    updateActive();
-    beep();
-  });
-});
-</script>
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
 
+      const now = ctx.currentTime;
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.0001, now);
+      master.connect(ctx.destination);
+
+      function tone(freq, start, duration) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, start);
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(0.06, start + 0.015);
+        gain.gain.setValueAtTime(0.06, start + duration - 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+        osc.connect(gain);
+        gain.connect(master);
+
+        osc.start(start);
+        osc.stop(start + duration);
+      }
+
+      tone(400, now, 0.2);
+      tone(250, now + 0.2, 0.2);
+    }
+
+    items.forEach((item, index) => {
+      item.addEventListener("pointerenter", (event) => {
+        setActive(index);
+        if (event.pointerType === "mouse" || event.pointerType === "pen") {
+          playBeepSequence();
+        }
+      });
+
+      item.addEventListener("pointerleave", () => {
+        if (activeIndex === index) {
+          clearActive();
+        }
+      });
+
+      item.addEventListener("click", () => {
+        setActive(index);
+        playBeepSequence();
+      });
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (!items.length) return;
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        const next = activeIndex < 0 ? 0 : (activeIndex + 1) % items.length;
+        setActive(next);
+        playBeepSequence();
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        const next = activeIndex < 0
+          ? items.length - 1
+          : (activeIndex - 1 + items.length) % items.length;
+        setActive(next);
+        playBeepSequence();
+      }
+
+      if (event.key === "Enter" && activeIndex >= 0) {
+        items[activeIndex].click();
+      }
+    });
+
+    clearActive();
+  </script>
 </body>
 </html>
