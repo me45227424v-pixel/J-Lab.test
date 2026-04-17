@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>JLab USW Simulator v1.4.3 Complete</title>
+<title>JLab USW Simulator v1.4.4 Complete</title>
 <style>
   :root{
     --panel-bg:#050505;
@@ -308,6 +308,23 @@
     return [{ type:'SUB', x:submarine.x, y:submarine.y, ref:submarine }, ...falseTargets];
   }
 
+  function degToRad(deg){ return deg * Math.PI / 180; }
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+  function wrapHeading(a){
+    while(a < -Math.PI) a += Math.PI * 2;
+    while(a > Math.PI) a -= Math.PI * 2;
+    return a;
+  }
+  function dist(ax, ay, bx, by){ return Math.hypot(ax - bx, ay - by); }
+  function nmX(x){ return x / SEA_NM * state.width; }
+  function nmY(y){ return y / SEA_NM * state.height; }
+  function pxToNmX(px){ return px / state.width * SEA_NM; }
+  function pxToNmY(py){ return px / state.height * SEA_NM; }
+
+  function compassToCanvasRad(deg){
+    return degToRad(90 - deg);
+  }
+
   function updateFalseTargets(dt){
     for(const t of falseTargets){
       if(t.type !== 'WHALE') continue;
@@ -361,19 +378,6 @@
 
     return best ? { contact: best, distance: bestD } : null;
   }
-
-  function degToRad(deg){ return deg * Math.PI / 180; }
-  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
-  function wrapHeading(a){
-    while(a < -Math.PI) a += Math.PI * 2;
-    while(a > Math.PI) a -= Math.PI * 2;
-    return a;
-  }
-  function dist(ax, ay, bx, by){ return Math.hypot(ax - bx, ay - by); }
-  function nmX(x){ return x / SEA_NM * state.width; }
-  function nmY(y){ return y / SEA_NM * state.height; }
-  function pxToNmX(px){ return px / state.width * SEA_NM; }
-  function pxToNmY(py){ return px / state.height * SEA_NM; }
 
   function resize(){
     const rect = seaWrap.getBoundingClientRect();
@@ -441,10 +445,9 @@
 
     hsListEl.innerHTML = '';
     helicopters.forEach(h => {
-      if(h.fuelState === 'OFFSCREEN') return;
       let pilotLabel = (h.phase === 'AI' || h.phase === 'IDLE') ? 'AUTO' : h.phase;
       if(h.phase === 'RTB') pilotLabel = 'RTB';
-      if(h.phase === 'OFFSCREEN') pilotLabel = 'MOTHER';
+      if(h.fuelState === 'OFFSCREEN') pilotLabel = 'MOTHER';
 
       const div = document.createElement('div');
       div.className = `hsCard ${state.selected === h ? 'selected' : ''}`;
@@ -554,7 +557,7 @@
       x: h.x,
       y: h.y,
       rangeNm: 0.22,
-      ttl: 8 * 60,
+      ttl: 2 * 60,
       bearingLine: null,
       bearingTimer: 0,
       lostThreshold: 0.9 + Math.random() * 0.1
@@ -563,7 +566,7 @@
   }
 
   function computeSonarGate(tx, ty){
-    const windTo = degToRad(WIND_FROM_DEG + 180);
+    const windTo = compassToCanvasRad(WIND_FROM_DEG + 180);
     const offset = 0.09;
     return {
       x: clamp(tx + Math.cos(windTo) * offset, 0.04, SEA_NM - 0.04),
@@ -854,7 +857,7 @@
 
         const dg = dist(h.x, h.y, h.gateX, h.gateY);
         if(dg < 0.10){
-          const approachHeading = degToRad(WIND_FROM_DEG);
+          const approachHeading = compassToCanvasRad(WIND_FROM_DEG);
           const diff = wrapHeading(approachHeading - h.heading);
           h.heading += clamp(diff, -0.8 * dt, 0.8 * dt);
         }
@@ -874,7 +877,7 @@
           h.y += (dy / d) * Math.min(step, d);
         }
 
-        const approachHeading = degToRad(WIND_FROM_DEG);
+        const approachHeading = compassToCanvasRad(WIND_FROM_DEG);
         const diff = wrapHeading(approachHeading - h.heading);
         h.heading += clamp(diff, -1.4 * dt, 1.4 * dt);
 
@@ -899,7 +902,7 @@
       }
 
       if(h.snrState === 'ACTIVE'){
-        const hoverHeading = degToRad(WIND_FROM_DEG);
+        const hoverHeading = compassToCanvasRad(WIND_FROM_DEG);
         const diff = wrapHeading(hoverHeading - h.heading);
         h.heading += clamp(diff, -0.9 * dt, 0.9 * dt);
         h.x += (h.finalX - h.x) * 0.06;
@@ -1021,7 +1024,7 @@
             const target = sonoHit.contact;
             const trueBearing = Math.atan2(target.y - b.y, target.x - b.x);
             b.bearingLine = {
-              bearing: trueBearing + degToRad(-30 + Math.random() * 60)
+              bearing: trueBearing + degToRad(-10 + Math.random() * 20)
             };
           }
         }
@@ -1120,10 +1123,10 @@
 
   function drawWhitecaps(){
     const now = performance.now() * 0.001;
-    const wr = degToRad(WIND_FROM_DEG);
+    const wr = compassToCanvasRad(WIND_FROM_DEG + 180);
     const wx = Math.cos(wr);
     const wy = Math.sin(wr);
-    const angleBase = Math.atan2(wy, wx) + Math.PI / 2;
+    const angleBase = wr + Math.PI / 2;
     const count = state.whitecapSeedCount;
 
     for(let i = 0; i < count; i++){
@@ -1526,15 +1529,16 @@
     for(const b of state.buoys){
       const x = nmX(b.x), y = nmY(b.y);
       const rr = b.rangeNm / SEA_NM * state.width;
+
       ctx.beginPath();
       ctx.arc(x, y, rr, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(120,255,160,0.45)";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(120,190,150,0.24)";
+      ctx.lineWidth = 1.2;
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = "#c8ffd6";
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(170,220,190,0.75)";
       ctx.fill();
     }
 
