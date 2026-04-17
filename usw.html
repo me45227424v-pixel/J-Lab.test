@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>JLab USW Simulator v1.2</title>
+<title>JLab USW Simulator v1.3 Complete</title>
 <style>
   :root{
     --panel-bg:#050505;
@@ -20,49 +20,108 @@
   }
   #app{display:flex;width:100vw;height:100vh}
   #seaWrap{
-    position:relative;width:80vw;height:100vh;overflow:hidden;background:#082635;
+    position:relative;
+    width:80vw;
+    height:100vh;
+    overflow:hidden;
+    background:#082635;
   }
   #game{
-    display:block;width:100%;height:100%;
-    touch-action:none;cursor:crosshair;
+    display:block;
+    width:100%;
+    height:100%;
+    touch-action:none;
+    cursor:crosshair;
   }
   #panel{
-    width:20vw;min-width:280px;height:100vh;background:var(--panel-bg);color:var(--text);
-    border-left:2px solid var(--panel-border);padding:14px 12px;overflow:auto;
+    width:20vw;
+    min-width:280px;
+    height:100vh;
+    background:var(--panel-bg);
+    color:var(--text);
+    border-left:2px solid var(--panel-border);
+    padding:10px;
+    overflow:auto;
   }
   .title{
-    font-weight:700;letter-spacing:.08em;margin:2px 0 12px;color:#e8ffe8;font-size:30px;
+    font-weight:700;
+    letter-spacing:.08em;
+    margin:2px 0 8px;
+    color:#e8ffe8;
+    font-size:22px;
   }
   .section{
-    border:1px solid #173117;padding:10px;margin-bottom:12px;background:rgba(0,30,0,.16);
+    border:1px solid #173117;
+    padding:8px;
+    margin-bottom:10px;
+    background:rgba(0,30,0,.16);
   }
   .section h3{
-    margin:0 0 8px;font-size:22px;color:var(--amber);letter-spacing:.06em;
+    margin:0 0 6px;
+    font-size:16px;
+    color:var(--amber);
+    letter-spacing:.06em;
   }
   .kv{
-    display:flex;justify-content:space-between;gap:8px;font-size:18px;line-height:1.6;
+    display:flex;
+    justify-content:space-between;
+    gap:8px;
+    font-size:14px;
+    line-height:1.35;
   }
   .small{
-    font-size:16px;opacity:.95;line-height:1.55;
+    font-size:13px;
+    opacity:.95;
+    line-height:1.32;
   }
   .hsCard{
-    border:1px solid #234423;padding:10px;margin:8px 0;background:rgba(0,20,0,.22);cursor:pointer;
+    border:1px solid #234423;
+    padding:7px;
+    margin:6px 0;
+    background:rgba(0,20,0,.22);
+    cursor:pointer;
   }
-  .hsCard.selected{outline:2px solid var(--cyan)}
-  .btnRow{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}
+  .hsCard.selected{
+    outline:2px solid var(--cyan);
+  }
+  .btnRow{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:7px;
+    margin-top:8px;
+  }
   button{
-    width:100%;border:1px solid #355335;background:#0c160c;color:var(--text);padding:12px 12px;
-    border-radius:8px;font-size:20px;
+    width:100%;
+    border:1px solid #355335;
+    background:#0c160c;
+    color:var(--text);
+    padding:9px 10px;
+    border-radius:8px;
+    font-size:16px;
   }
-  button.primary{border-color:#337c8c;color:#d6faff;background:#0d1b20}
-  button:active{transform:scale(.99)}
+  button.primary{
+    border-color:#337c8c;
+    color:#d6faff;
+    background:#0d1b20;
+  }
+  button:active{
+    transform:scale(.99);
+  }
   button.activeMission{
     border-color:#3cff72;
     color:#eaffea;
     background:rgba(20,120,40,0.35);
-    box-shadow:0 0 0 1px rgba(60,255,114,0.25) inset, 0 0 10px rgba(60,255,114,0.22);
+    box-shadow:
+      0 0 0 1px rgba(60,255,114,0.25) inset,
+      0 0 10px rgba(60,255,114,0.22);
   }
-  .log{font-size:14px;line-height:1.5;max-height:34vh;overflow:auto;white-space:pre-wrap}
+  .log{
+    font-size:11px;
+    line-height:1.32;
+    max-height:28vh;
+    overflow:auto;
+    white-space:pre-wrap;
+  }
 </style>
 </head>
 <body>
@@ -117,7 +176,7 @@
   const HS_MAX_SPEED = 0.035;
   const FUEL_START_LBS = 3800;
   const FUEL_BINGO_LBS = 1000;
-  const FUEL_BURN_PER_SEC = (3800 - 1000) / 300;
+  const FUEL_BURN_PER_SEC = (3800 - 1000) / 300; // 5分で1000 lbs
 
   const state = {
     width: 1,
@@ -144,22 +203,20 @@
     targetHeading: 2.2,
     speed: 0.0,
     targetSpeed: 0.0,
-    maxSpeed: HS_MAX_SPEED / 3,
-    accelPerSec: (HS_MAX_SPEED / 3) / 30,
+    maxSpeed: HS_MAX_SPEED / 6,            // v1.3: 以前の半分
+    accelPerSec: (HS_MAX_SPEED / 6) / 30,  // 停止→最大まで30秒
     straightTimer: 12 + Math.random() * 18,
     turning: false,
     turnRemainingDeg: 0,
     periscopeUp: false,
     periscopeTimer: 0,
-    periscopeCooldown: 0,
-    lastSnrEvadeX: null,
-    lastSnrEvadeY: null
+    periscopeCooldown: 0
   };
 
   function makeHS(id, x, y) {
     return {
       id,
-      x, y, tx: x, ty: y,
+      x, y, tx:x, ty:y,
       heading: 0,
       altitude: 1000,
       desiredAltitude: 1000,
@@ -167,14 +224,16 @@
       phase: 'AI',
       speed: HS_MAX_SPEED,
       rotorPhase: Math.random() * Math.PI * 2,
+
       fuel: FUEL_START_LBS,
-      fuelState: 'NORMAL',
+      fuelState: 'NORMAL', // NORMAL / LOW / OFFSCREEN / RETURN
       respawnTimer: 0,
       respawnX: x,
       respawnY: y,
       exitX: null,
       exitY: null,
-      snrState: 'NONE',
+
+      snrState: 'NONE', // NONE / APPROACH / DESCEND / HOVER_WAIT / ACTIVE / EXIT_WAIT / EXITING
       snrWaitTimer: 0,
       snrPulseTimer: 0,
       snrPulseAge: 99,
@@ -183,19 +242,20 @@
       gateY: null,
       finalX: null,
       finalY: null,
+
       madTrack: false,
       madAngle: 0,
       madCenterX: 0,
       madCenterY: 0,
       madTrackTimer: 0,
+
       madDeploy: 0,
-      madDeployTarget: 0,
-      buoyPending: false
+      madDeployTarget: 0
     };
   }
 
   const helicopters = [
-    makeHS(0, 1.0, 0.10),
+    makeHS(0, 1.00, 0.10),
     makeHS(1, 0.10, 1.80),
     makeHS(2, 1.90, 1.80)
   ];
@@ -211,7 +271,7 @@
   function nmX(x){ return x / SEA_NM * state.width; }
   function nmY(y){ return y / SEA_NM * state.height; }
   function pxToNmX(px){ return px / state.width * SEA_NM; }
-  function pxToNmY(py){ return py / state.height * SEA_NM; }
+  function pxToNmY(py){ return px / state.height * SEA_NM; }
 
   function resize(){
     const rect = seaWrap.getBoundingClientRect();
@@ -223,7 +283,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     state.width = rect.width;
     state.height = rect.height;
-    state.whitecapSeedCount = Math.max(40, Math.floor(state.width * state.height / 18000));
+    state.whitecapSeedCount = Math.max(90, Math.floor(state.width * state.height / 11000));
   }
 
   function nowStamp() {
@@ -250,7 +310,7 @@
     return '1000 FT';
   }
 
-  function setSelected(h) {
+  function setSelected(h){
     if(h.fuelState === 'OFFSCREEN') return;
     state.selected = h;
     updateUI();
@@ -268,16 +328,12 @@
       const madLine = (h.mission === 'MAD')
         ? `<div class="small">MAD DEPLOY: ${Math.round(h.madDeploy * 100)}%</div>`
         : '';
-
       selectedInfoEl.innerHTML = `
         <div><strong>HS-${h.id + 1}</strong> / <span style="color:#fff0c2">${h.mission}</span></div>
         <div class="small">WIND LINE: ${windLineText(WIND_FROM_DEG)}</div>
         <div class="small">ALT: ${missionAltitudeText(h)}</div>
         <div class="small">FUEL: ${Math.max(0, Math.round(h.fuel))} lbs</div>
-        <div class="small">STATE: ${h.fuelState}</div>
-        <div class="small">SNR STATE: ${h.snrState}</div>
         ${madLine}
-        <div class="small">次に海面をクリック/タップすると ${h.mission} 命令を実行</div>
       `;
     }
 
@@ -318,17 +374,17 @@
   }
 
   function setMission(mission){
-    if(!state.selected) {
+    if(!state.selected){
       addLog('NO AIRCRAFT SELECTED');
       return;
     }
 
-    if(state.selected.fuelState === 'LOW' || state.selected.fuelState === 'OFFSCREEN'){
-      addLog(`HS-${state.selected.id+1} unavailable (LOW FUEL / RTB)`);
+    const h = state.selected;
+    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN'){
+      addLog(`HS-${h.id+1} unavailable (LOW FUEL / RTB)`);
       return;
     }
 
-    const h = state.selected;
     const prevMission = h.mission;
     h.mission = mission;
 
@@ -362,25 +418,31 @@
   }
 
   missionSnrBtn.addEventListener('click', (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     setMission('SNR');
   });
 
   missionSonoBtn.addEventListener('click', (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
+
     if(!state.selected){
       addLog('NO AIRCRAFT SELECTED');
       return;
     }
+
     if(state.selected.mission === 'SONO'){
       launchSono(state.selected);
       return;
     }
+
     setMission('SONO');
   });
 
   missionMadBtn.addEventListener('click', (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     setMission('MAD');
   });
 
@@ -393,12 +455,13 @@
       ttl: 8 * 60,
       bearingLine: null,
       bearingTimer: 0,
-      lostThreshold: 0.8 + Math.random() * 0.2
+      lostThreshold: 0.9 + Math.random() * 0.1
     });
     addLog(`HS-${h.id+1} SONO launched`);
   }
 
   function computeSonarGate(tx, ty){
+    // 風下ゲートへ入り、最終進入で風上へ機首を向ける
     const windTo = degToRad(WIND_FROM_DEG + 180);
     const offset = 0.09;
     return {
@@ -408,7 +471,7 @@
   }
 
   function getMadRangeNm(){ return 0.022; }
-  function getSnrRangeNm(){ return 0.055; }
+  function getSnrRangeNm(){ return 0.11; } // v1.3: 直径を倍化 → 半径0.11
 
   function pointerToSea(clientX, clientY){
     const rect = canvas.getBoundingClientRect();
@@ -422,6 +485,7 @@
     const p = pointerToSea(e.clientX, e.clientY);
     if(!p) return;
 
+    // 機体選択
     for(const h of helicopters){
       if(h.fuelState === 'OFFSCREEN') continue;
       if(dist(h.x, h.y, p.x, p.y) < 0.09){
@@ -432,6 +496,7 @@
 
     if(!state.selected) return;
     const h = state.selected;
+
     if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN'){
       addLog(`HS-${h.id+1} cannot accept task while RTB`);
       return;
@@ -447,10 +512,14 @@
         addLog(`HS-${h.id+1} dip ended, exit prep`);
         return;
       }
+
       const gate = computeSonarGate(p.x, p.y);
-      h.finalX = p.x; h.finalY = p.y;
-      h.gateX = gate.x; h.gateY = gate.y;
-      h.tx = h.gateX; h.ty = h.gateY;
+      h.finalX = p.x;
+      h.finalY = p.y;
+      h.gateX = gate.x;
+      h.gateY = gate.y;
+      h.tx = gate.x;
+      h.ty = gate.y;
       h.snrState = 'APPROACH';
       h.phase = 'MANUAL';
       h.desiredAltitude = 400;
@@ -460,7 +529,8 @@
     }
 
     if(h.mission === 'SONO'){
-      h.tx = p.x; h.ty = p.y;
+      h.tx = p.x;
+      h.ty = p.y;
       h.phase = 'TRANSIT';
       h.desiredAltitude = 1000;
       addLog(`HS-${h.id+1} SONO transit`);
@@ -468,7 +538,8 @@
     }
 
     if(h.mission === 'MAD'){
-      h.tx = p.x; h.ty = p.y;
+      h.tx = p.x;
+      h.ty = p.y;
       h.phase = 'TRANSIT';
       h.desiredAltitude = 400;
       h.madTrack = false;
@@ -525,13 +596,17 @@
       const minEdge = Math.min(left, right, top, bottom);
 
       if(minEdge === left){
-        h.exitX = -0.18; h.exitY = h.y;
+        h.exitX = -0.18;
+        h.exitY = h.y;
       } else if(minEdge === right){
-        h.exitX = SEA_NM + 0.18; h.exitY = h.y;
+        h.exitX = SEA_NM + 0.18;
+        h.exitY = h.y;
       } else if(minEdge === top){
-        h.exitX = h.x; h.exitY = -0.18;
+        h.exitX = h.x;
+        h.exitY = -0.18;
       } else {
-        h.exitX = h.x; h.exitY = SEA_NM + 0.18;
+        h.exitX = h.x;
+        h.exitY = SEA_NM + 0.18;
       }
 
       h.respawnX = h.exitX;
@@ -581,6 +656,7 @@
       const step = Math.min(Math.abs(submarine.turnRemainingDeg), turnRateDeg) * sign;
       submarine.targetHeading += degToRad(step);
       submarine.turnRemainingDeg -= step;
+
       if(Math.abs(submarine.turnRemainingDeg) <= 0.01){
         submarine.turning = false;
         submarine.straightTimer = 10 + Math.random() * 20;
@@ -613,6 +689,7 @@
     h.rotorPhase += 20 * dt;
     h.altitude += (h.desiredAltitude - h.altitude) * Math.min(1, dt * 1.8);
 
+    // MAD 展開 / 収納 5秒
     if(h.madDeploy !== h.madDeployTarget){
       const dir = h.madDeployTarget > h.madDeploy ? 1 : -1;
       h.madDeploy += dir * (dt / 5);
@@ -644,20 +721,45 @@
 
     if(h.mission === 'SNR' || h.snrState !== 'NONE'){
       if(h.snrState === 'APPROACH'){
-        moveToward(h, h.gateX, h.gateY, dt, 0.9, 1.3);
+        moveToward(h, h.gateX, h.gateY, dt, 0.9, 1.2);
         h.desiredAltitude = 400;
-        if(dist(h.x, h.y, h.gateX, h.gateY) < 0.03) h.snrState = 'DESCEND';
+
+        const dg = dist(h.x, h.y, h.gateX, h.gateY);
+        if(dg < 0.10){
+          const approachHeading = degToRad(WIND_FROM_DEG);
+          const diff = wrapHeading(approachHeading - h.heading);
+          h.heading += clamp(diff, -0.8 * dt, 0.8 * dt);
+        }
+
+        if(dg < 0.03) h.snrState = 'DESCEND';
         return;
       }
+
       if(h.snrState === 'DESCEND'){
-        moveToward(h, h.finalX, h.finalY, dt, 0.45, 1.0);
+        const dx = h.finalX - h.x;
+        const dy = h.finalY - h.y;
+        const d = Math.hypot(dx, dy);
+
+        if(d > 0.0001){
+          const step = h.speed * 0.45 * dt;
+          h.x += (dx / d) * Math.min(step, d);
+          h.y += (dy / d) * Math.min(step, d);
+        }
+
+        // v1.3: 最終進入から風向へ正対
+        const approachHeading = degToRad(WIND_FROM_DEG);
+        const diff = wrapHeading(approachHeading - h.heading);
+        h.heading += clamp(diff, -1.4 * dt, 1.4 * dt);
+
         h.desiredAltitude = 150;
+
         if(dist(h.x, h.y, h.finalX, h.finalY) < 0.01 && Math.abs(h.altitude - 150) < 15){
           h.snrState = 'HOVER_WAIT';
           h.snrWaitTimer = 5;
         }
         return;
       }
+
       if(h.snrState === 'HOVER_WAIT'){
         h.snrWaitTimer -= dt;
         if(h.snrWaitTimer <= 0){
@@ -668,6 +770,7 @@
         }
         return;
       }
+
       if(h.snrState === 'ACTIVE'){
         const hoverHeading = degToRad(WIND_FROM_DEG);
         const diff = wrapHeading(hoverHeading - h.heading);
@@ -681,8 +784,7 @@
           h.snrPulseTimer = 0;
           h.snrPulseAge = 0;
 
-          submarine.lastSnrEvadeX = h.x;
-          submarine.lastSnrEvadeY = h.y;
+          // 潜水艦は発振位置から離れるアスペクトへ
           submarine.targetHeading = Math.atan2(submarine.y - h.y, submarine.x - h.x);
           submarine.targetSpeed = Math.max(submarine.targetSpeed, submarine.maxSpeed * 0.8);
 
@@ -711,17 +813,20 @@
             h.snrContact = null;
           }
         }
+
         if(h.snrContact){
           h.snrContact.age += dt;
           if(h.snrContact.age > h.snrContact.ttl) h.snrContact = null;
         }
         return;
       }
+
       if(h.snrState === 'EXIT_WAIT'){
         h.snrWaitTimer -= dt;
         if(h.snrWaitTimer <= 0) h.snrState = 'EXITING';
         return;
       }
+
       if(h.snrState === 'EXITING'){
         h.desiredAltitude = 400;
         const fx = h.x + Math.cos(h.heading) * 0.06;
@@ -768,29 +873,28 @@
     }
   }
 
-  function updateBuoys(dt){
+  function updateBuoyBearings(dt){
     for(let i = state.buoys.length - 1; i >= 0; i--){
       const b = state.buoys[i];
       b.ttl -= dt;
       b.bearingTimer += dt;
+
       const d = dist(b.x, b.y, submarine.x, submarine.y);
       const ratio = d / b.rangeNm;
 
-      if(d > b.rangeNm || ratio >= b.lostThreshold){
+      if(d > b.rangeNm){
         b.bearingLine = null;
-      } else if(b.bearingTimer >= 2){
-        b.bearingTimer = 0;
-        const trueBearing = Math.atan2(submarine.y - b.y, submarine.x - b.x);
-        b.bearingLine = {
-          bearing: trueBearing + degToRad(-30 + Math.random() * 60),
-          ttl: 2.1,
-          age: 0
-        };
-      }
-
-      if(b.bearingLine){
-        b.bearingLine.age += dt;
-        if(b.bearingLine.age > b.bearingLine.ttl) b.bearingLine = null;
+      } else if(ratio >= b.lostThreshold){
+        b.bearingLine = null;
+      } else {
+        // v1.3: 探知圏内では表示を維持し続け、2秒ごとに更新
+        if(!b.bearingLine || b.bearingTimer >= 2){
+          b.bearingTimer = 0;
+          const trueBearing = Math.atan2(submarine.y - b.y, submarine.x - b.x);
+          b.bearingLine = {
+            bearing: trueBearing + degToRad(-30 + Math.random() * 60)
+          };
+        }
       }
 
       if(b.ttl <= 0) state.buoys.splice(i, 1);
@@ -805,11 +909,13 @@
       const d1 = {x:Math.cos(a1), y:Math.sin(a1)};
       const d2 = {x:Math.cos(a2), y:Math.sin(a2)};
       const denom = d1.x * d2.y - d1.y * d2.x;
+
       if(Math.abs(denom) > 0.0001){
         const dx = p2.x - p1.x, dy = p2.y - p1.y;
         const t1 = (dx * d2.y - dy * d2.x) / denom;
         const ix = p1.x + d1.x * t1;
         const iy = p1.y + d1.y * t1;
+
         if(ix >= 0 && ix <= SEA_NM && iy >= 0 && iy <= SEA_NM){
           state.contact = {x:ix, y:iy, radiusNm:0.07, sensor:'SONO-FIX'};
           state.lastContactTime = nowStamp();
@@ -826,11 +932,13 @@
       if(h.mission !== 'MAD') continue;
       if(h.madDeploy < 0.95) continue;
       if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN') continue;
+
       const d = dist(h.x, h.y, submarine.x, submarine.y);
       if(h.altitude <= 500 && d <= getMadRangeNm()){
         const mx = clamp(submarine.x + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
         const my = clamp(submarine.y + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
         state.madContacts.push({x:mx, y:my, life:60});
+
         h.madTrack = true;
         h.madCenterX = mx;
         h.madCenterY = my;
@@ -844,6 +952,7 @@
         state.lastDetectionTime = state.simTime;
       }
     }
+
     for(let i = state.madContacts.length - 1; i >= 0; i--){
       state.madContacts[i].life -= dt;
       if(state.madContacts[i].life <= 0) state.madContacts.splice(i, 1);
@@ -854,7 +963,7 @@
     state.simTime += dt;
     updateSubmarine(dt);
     helicopters.forEach(h => updateHS(h, dt));
-    updateBuoys(dt);
+    updateBuoyBearings(dt);
     updateMadDetection(dt);
   }
 
@@ -897,12 +1006,12 @@
       const x = bx + wx * drift;
       const y = by + wy * drift;
 
-      const r = 2.8 + ((seed * 47.3) % 1) * 3.8;
+      const r = 3.4 + ((seed * 47.3) % 1) * 4.6;
       const arc = 0.45 + ((seed * 19.7) % 1) * 0.55;
 
       ctx.beginPath();
       ctx.arc(x, y, r, angleBase - arc/2, angleBase + arc/2);
-      ctx.strokeStyle = `rgba(255,255,255,${0.24 * alpha})`;
+      ctx.strokeStyle = `rgba(255,255,255,${0.40 * alpha})`;
       ctx.lineWidth = 1;
       ctx.stroke();
 
@@ -915,7 +1024,7 @@
           angleBase - arc * 0.35,
           angleBase + arc * 0.35
         );
-        ctx.strokeStyle = `rgba(255,255,255,${0.14 * alpha})`;
+        ctx.strokeStyle = `rgba(255,255,255,${0.24 * alpha})`;
         ctx.lineWidth = 1;
         ctx.stroke();
       }
@@ -924,6 +1033,7 @@
 
   function drawDownwashAt(x, y){
     const t = performance.now() * 0.004;
+
     const r1 = 16 + Math.sin(t) * 1.8;
     const r2 = 26 + Math.sin(t * 0.85) * 2.4;
 
@@ -960,6 +1070,7 @@
     const x = nmX(h.x);
     const y = nmY(h.y);
 
+    // ユーザー指定: 高高度ほど大きく / 低高度ほど小さく
     const altitudeScale =
       h.altitude <= 180 ? 0.90 :
       h.altitude <= 450 ? 0.97 : 1.06;
@@ -1100,6 +1211,7 @@
     }
     ctx.restore();
 
+    // MAD曳航体
     if(h.madDeploy > 0.01){
       const cableLen = baseSize * (0.18 + 0.42 * h.madDeploy);
       const bodyY = baseSize * 1.05 + cableLen;
@@ -1220,6 +1332,7 @@
     if(!state.contact) return;
     const x = nmX(state.contact.x), y = nmY(state.contact.y);
     const r = (state.contact.radiusNm || 0.06) / SEA_NM * state.width;
+
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255,205,80,0.08)';
@@ -1233,6 +1346,7 @@
 
   function drawPlannedPoint(){
     if(!state.plannedPoint) return;
+
     const x = nmX(state.plannedPoint.x);
     const y = nmY(state.plannedPoint.y);
     const t = performance.now() * 0.004;
@@ -1258,9 +1372,11 @@
     const x = nmX(submarine.x);
     const y = nmY(submarine.y);
     const t = performance.now() * 0.01;
+
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
-    if(Math.sin(t) > 0.0){
+
+    if(Math.sin(t) > 0){
       ctx.fillStyle = "rgba(255,255,255,0.35)";
       ctx.fillRect(Math.round(x) - 1, Math.round(y), 3, 1);
     }
@@ -1277,6 +1393,7 @@
       ctx.strokeStyle = "rgba(120,255,160,0.45)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
+
       ctx.beginPath();
       ctx.arc(x, y, 4, 0, Math.PI * 2);
       ctx.fillStyle = "#c8ffd6";
@@ -1299,6 +1416,7 @@
       ctx.strokeStyle = `rgba(255,210,90,${0.8*a})`;
       ctx.lineWidth = 2;
       ctx.stroke();
+
       ctx.fillStyle = `rgba(255,235,160,${0.95*a})`;
       ctx.font = "bold 12px sans-serif";
       ctx.textAlign = "center";
@@ -1314,9 +1432,11 @@
     if(!state.lastFrame) state.lastFrame = ts;
     const dt = Math.min(0.05, (ts - state.lastFrame) / 1000);
     state.lastFrame = ts;
+
     update(dt);
     draw();
     updateUI();
+
     requestAnimationFrame(loop);
   }
 
