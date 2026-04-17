@@ -160,6 +160,7 @@
   const canvas = document.getElementById('game');
   const seaWrap = document.getElementById('seaWrap');
   const ctx = canvas.getContext('2d');
+  canvas.style.touchAction = 'none';
 
   const selectedInfoEl = document.getElementById('selectedInfo');
   const hsListEl = document.getElementById('hsList');
@@ -578,17 +579,18 @@
     const xPx = clientX - rect.left;
     const yPx = clientY - rect.top;
     if(xPx < 0 || yPx < 0 || xPx > rect.width || yPx > rect.height) return null;
-    return { x: pxToNmX(xPx), y: pxToNmY(yPx) };
+    return { x: xPx / rect.width * SEA_NM, y: yPx / rect.height * SEA_NM };
   }
 
   canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+
     const rect = canvas.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
 
-    const SELECT_RADIUS = 28;
+    const SELECT_RADIUS = 22;
 
-    // 修正点：最初に当たったHSではなく、最寄りHSを1機だけ評価する
     let nearest = null;
     let minDist = Infinity;
 
@@ -613,7 +615,12 @@
     }
 
     const p = pointerToSea(e.clientX, e.clientY);
-    if(!p || !state.selected) return;
+    if(!p) return;
+
+    if(!state.selected){
+      addLog('SELECT AIRCRAFT FIRST');
+      return;
+    }
 
     const h = state.selected;
     if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN'){
@@ -643,7 +650,7 @@
       h.phase = 'MANUAL';
       h.desiredAltitude = 400;
       h.madTrack = false;
-      addLog(`HS-${h.id+1} SNR approach`);
+      addLog(`HS-${h.id+1} SNR approach -> (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
       return;
     }
 
@@ -652,7 +659,7 @@
       h.ty = p.y;
       h.phase = 'TRANSIT';
       h.desiredAltitude = 1000;
-      addLog(`HS-${h.id+1} SONO transit`);
+      addLog(`HS-${h.id+1} SONO transit -> (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
       return;
     }
 
@@ -662,10 +669,12 @@
       h.phase = 'TRANSIT';
       h.desiredAltitude = 400;
       h.madTrack = false;
-      addLog(`HS-${h.id+1} MAD transit`);
+      addLog(`HS-${h.id+1} MAD transit -> (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
       return;
     }
-  });
+
+    addLog(`HS-${h.id+1} no mission selected for sea command`);
+  }, { passive:false });
 
   function moveToward(h, tx, ty, dt, speedScale=1.0, turnRate=2.0){
     const dx = tx - h.x;
