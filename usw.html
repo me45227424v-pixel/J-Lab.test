@@ -176,7 +176,7 @@
   const HS_MAX_SPEED = 0.035;
   const FUEL_START_LBS = 3800;
   const FUEL_BINGO_LBS = 1000;
-  const FUEL_BURN_PER_SEC = (3800 - 1000) / 300; // 5分で1000 lbs
+  const FUEL_BURN_PER_SEC = (3800 - 1000) / 300;
 
   const state = {
     width: 1,
@@ -203,8 +203,8 @@
     targetHeading: 2.2,
     speed: 0.0,
     targetSpeed: 0.0,
-    maxSpeed: HS_MAX_SPEED / 6,            // v1.3: 以前の半分
-    accelPerSec: (HS_MAX_SPEED / 6) / 30,  // 停止→最大まで30秒
+    maxSpeed: HS_MAX_SPEED / 6,
+    accelPerSec: (HS_MAX_SPEED / 6) / 30,
     straightTimer: 12 + Math.random() * 18,
     turning: false,
     turnRemainingDeg: 0,
@@ -227,14 +227,14 @@
       flashTimer: 0,
 
       fuel: FUEL_START_LBS,
-      fuelState: 'NORMAL', // NORMAL / LOW / OFFSCREEN / RETURN
+      fuelState: 'NORMAL',
       respawnTimer: 0,
       respawnX: x,
       respawnY: y,
       exitX: null,
       exitY: null,
 
-      snrState: 'NONE', // NONE / APPROACH / DESCEND / HOVER_WAIT / ACTIVE / EXIT_WAIT / EXITING
+      snrState: 'NONE',
       snrWaitTimer: 0,
       snrPulseTimer: 0,
       snrPulseAge: 99,
@@ -251,8 +251,7 @@
       madTrackTimer: 0,
 
       madDeploy: 0,
-      madDeployTarget: 0,
-      flashTimer: 0
+      madDeployTarget: 0
     };
   }
 
@@ -265,7 +264,7 @@
   function makeFalseTargets(){
     const targets = [];
 
-    const thermalCount = 3 + Math.floor(Math.random() * 3); // 3〜5
+    const thermalCount = 3 + Math.floor(Math.random() * 3);
     for(let i=0;i<thermalCount;i++){
       targets.push({
         type:'THERMAL',
@@ -276,7 +275,7 @@
       });
     }
 
-    if(Math.random() < 0.5){ // 0〜1
+    if(Math.random() < 0.5){
       targets.push({
         type:'WHALE',
         x: 0.12 + Math.random() * 1.76,
@@ -288,7 +287,7 @@
       });
     }
 
-    const wreckCount = Math.floor(Math.random() * 4); // 0〜3
+    const wreckCount = Math.floor(Math.random() * 4);
     for(let i=0;i<wreckCount;i++){
       targets.push({
         type:'WRECK',
@@ -344,7 +343,7 @@
     for(const c of getAllContacts()){
       let detectable = false;
       if(sensorType === 'SNR'){
-        detectable = true; // 全部拾う
+        detectable = true;
       } else if(sensorType === 'SONO'){
         detectable = c.type === 'SUB';
       } else if(sensorType === 'MAD'){
@@ -361,8 +360,6 @@
 
     return best ? { contact: best, distance: bestD } : null;
   }
-
-
 
   function degToRad(deg){ return deg * Math.PI / 180; }
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
@@ -565,7 +562,6 @@
   }
 
   function computeSonarGate(tx, ty){
-    // 風下ゲートへ入り、最終進入で風上へ機首を向ける
     const windTo = degToRad(WIND_FROM_DEG + 180);
     const offset = 0.09;
     return {
@@ -575,7 +571,7 @@
   }
 
   function getMadRangeNm(){ return 0.022; }
-  function getSnrRangeNm(){ return 0.11; } // v1.3: 直径を倍化 → 半径0.11
+  function getSnrRangeNm(){ return 0.11; }
 
   function pointerToSea(clientX, clientY){
     const rect = canvas.getBoundingClientRect();
@@ -591,30 +587,31 @@
     const py = e.clientY - rect.top;
 
     const SELECT_RADIUS = 28;
-    let hitHS = null;
 
-    // ① まず機体ヒット判定。これが昔の安定版の制御。
+    // 修正点：最初に当たったHSではなく、最寄りHSを1機だけ評価する
+    let nearest = null;
+    let minDist = Infinity;
+
     for(const h of helicopters){
       if(h.fuelState === 'OFFSCREEN') continue;
       const hx = nmX(h.x);
       const hy = nmY(h.y);
       const d = Math.hypot(hx - px, hy - py);
-      if(d <= SELECT_RADIUS){
-        hitHS = h;
-        break;
+      if(d < minDist){
+        minDist = d;
+        nearest = h;
       }
     }
 
-    if(hitHS){
-      if(hitHS === state.selected){
-        hitHS.flashTimer = 0.18;
+    if(nearest && minDist <= SELECT_RADIUS){
+      if(nearest === state.selected){
+        nearest.flashTimer = 0.18;
       } else {
-        setSelected(hitHS);
+        setSelected(nearest);
       }
       return;
     }
 
-    // ② それ以外は海面操作
     const p = pointerToSea(e.clientX, e.clientY);
     if(!p || !state.selected) return;
 
@@ -811,9 +808,7 @@
     h.rotorPhase += 20 * dt;
     if(h.flashTimer > 0) h.flashTimer = Math.max(0, h.flashTimer - dt);
     h.altitude += (h.desiredAltitude - h.altitude) * Math.min(1, dt * 1.8);
-    if(h.flashTimer > 0) h.flashTimer -= dt;
 
-    // MAD 展開 / 収納 5秒
     if(h.madDeploy !== h.madDeployTarget){
       const dir = h.madDeployTarget > h.madDeploy ? 1 : -1;
       h.madDeploy += dir * (dt / 5);
@@ -870,7 +865,6 @@
           h.y += (dy / d) * Math.min(step, d);
         }
 
-        // v1.3: 最終進入から風向へ正対
         const approachHeading = degToRad(WIND_FROM_DEG);
         const diff = wrapHeading(approachHeading - h.heading);
         h.heading += clamp(diff, -1.4 * dt, 1.4 * dt);
@@ -908,7 +902,6 @@
           h.snrPulseTimer = 0;
           h.snrPulseAge = 0;
 
-          // 潜水艦は発振位置から離れるアスペクトへ
           submarine.targetHeading = Math.atan2(submarine.y - h.y, submarine.x - h.x);
           submarine.targetSpeed = Math.max(submarine.targetSpeed, submarine.maxSpeed * 0.8);
 
@@ -1061,10 +1054,11 @@
       if(h.madDeploy < 0.95) continue;
       if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN') continue;
 
-      const d = dist(h.x, h.y, submarine.x, submarine.y);
-      if(h.altitude <= 500 && d <= getMadRangeNm()){
-        const mx = clamp(submarine.x + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
-        const my = clamp(submarine.y + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
+      const madHit = findNearestDetectableContact(h.x, h.y, getMadRangeNm(), 'MAD');
+      if(h.altitude <= 500 && madHit){
+        const target = madHit.contact;
+        const mx = clamp(target.x + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
+        const my = clamp(target.y + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
         state.madContacts.push({x:mx, y:my, life:60});
 
         h.madTrack = true;
@@ -1075,9 +1069,9 @@
 
         state.contact = {x:mx, y:my, radiusNm:0.08, sensor:'MAD'};
         state.lastContactTime = nowStamp();
-        state.lastContactSensor = 'MAD';
+        state.lastContactSensor = `MAD-${target.type}`;
         state.lastContactRadius = '0.08 nm';
-        state.lastDetectionTime = state.simTime;
+        if(target.type === 'SUB') state.lastDetectionTime = state.simTime;
       }
     }
 
@@ -1199,7 +1193,6 @@
     const x = nmX(h.x);
     const y = nmY(h.y);
 
-    // ユーザー指定: 高高度ほど大きく / 低高度ほど小さく
     const altitudeScale =
       h.altitude <= 180 ? 0.90 :
       h.altitude <= 450 ? 0.97 : 1.06;
@@ -1348,7 +1341,6 @@
     }
     ctx.restore();
 
-    // MAD曳航体
     if(h.madDeploy > 0.01){
       const cableLen = baseSize * (0.18 + 0.42 * h.madDeploy);
       const bodyY = baseSize * 1.05 + cableLen;
