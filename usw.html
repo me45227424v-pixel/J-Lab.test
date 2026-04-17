@@ -1,258 +1,971 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>JLab USW Simulator</title>
 <style>
-  body { margin:0; display:flex; background:#000; color:#0f0; font-family:monospace; }
-  canvas { flex:4; background:#000; }
-  #panel { flex:1; background:#111; padding:10px; }
-  button { width:100%; margin:4px 0; }
+  :root{
+    --panel-bg:#050505;
+    --panel-border:#1f1f1f;
+    --text:#b7ffb7;
+    --amber:#ffcf66;
+    --cyan:#77e7ff;
+    --danger:#ff6b6b;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{
+    margin:0;width:100%;height:100%;overflow:hidden;background:#000;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  #app{display:flex;width:100vw;height:100vh}
+  #seaWrap{
+    position:relative;width:80vw;height:100vh;overflow:hidden;background:#082635;
+  }
+  #game{
+    display:block;width:100%;height:100%;
+    touch-action:none; cursor:crosshair;
+  }
+  #panel{
+    width:20vw;min-width:260px;height:100vh;background:var(--panel-bg);color:var(--text);
+    border-left:2px solid var(--panel-border);padding:12px 10px 12px 12px;overflow:auto;
+  }
+  .title{font-weight:700;letter-spacing:.08em;margin:2px 0 10px;color:#e8ffe8}
+  .section{
+    border:1px solid #173117;padding:8px;margin-bottom:10px;background:rgba(0,30,0,.16);
+  }
+  .section h3{
+    margin:0 0 6px;font-size:13px;color:var(--amber);letter-spacing:.06em;
+  }
+  .kv{display:flex;justify-content:space-between;gap:6px;font-size:12px;line-height:1.5}
+  .small{font-size:11px;opacity:.92;line-height:1.45}
+  .legend{font-size:11px;line-height:1.4;color:#b9d9ff}
+  .hsCard{
+    border:1px solid #234423;padding:6px;margin:6px 0;background:rgba(0,20,0,.22);cursor:pointer;
+  }
+  .hsCard.selected{outline:2px solid var(--cyan)}
+  .btnRow{display:grid;grid-template-columns:1fr;gap:6px;margin-top:8px}
+  button{
+    width:100%;border:1px solid #355335;background:#0c160c;color:var(--text);padding:8px 10px;
+    border-radius:6px;font-size:13px;
+  }
+  button.primary{border-color:#337c8c;color:#d6faff;background:#0d1b20}
+  button.warn{border-color:#8c6d20;color:#fff0c2;background:#201b0d}
+  button:active{transform:scale(.99)}
+  .log{font-size:11px;line-height:1.45;max-height:28vh;overflow:auto;white-space:pre-wrap}
+  .badge{
+    display:inline-block;min-width:54px;text-align:center;font-size:11px;padding:2px 5px;border-radius:999px;
+    border:1px solid #295729
+  }
+  .contactBadge{color:#fff0c2;border-color:#8c6d20}
+  .lostBadge{color:#ffc2c2;border-color:#7a2e2e}
 </style>
 </head>
 <body>
+<div id="app">
+  <div id="seaWrap">
+    <canvas id="game"></canvas>
+  </div>
 
-<canvas id="game"></canvas>
+  <aside id="panel">
+    <div class="title">USW // HS-3</div>
 
-<div id="panel">
-  <div id="info">NO SELECTION</div>
-  <button onclick="setMission('SNR')">SNR</button>
-  <button onclick="setMission('SONO')">SONO</button>
-  <button onclick="setMission('MAD')">MAD</button>
-  <button onclick="launch()">LAUNCH</button>
+    <div class="section">
+      <h3>MISSION</h3>
+      <div class="kv"><span>AREA</span><span>2.0 nm × 2.0 nm</span></div>
+      <div class="kv"><span>PHASE</span><span>局限 / 類別 / 追尾</span></div>
+      <div class="kv"><span>CONTROL</span><span>POINTER / CLICK</span></div>
+      <div class="kv"><span>SELECTED</span><span id="selectedLabel">NONE</span></div>
+      <div class="kv"><span>CONTACT</span><span id="contactState"><span class="badge lostBadge">LOST</span></span></div>
+    </div>
+
+    <div class="section">
+      <h3>SELECTED AIRCRAFT</h3>
+      <div id="selectedInfo" class="small">HSをクリックまたはタップして選択。未選択時は全機AI飛行。</div>
+      <div class="btnRow">
+        <button id="missionSnrBtn" class="primary">SNR</button>
+        <button id="missionSonoBtn" class="primary">SONO</button>
+        <button id="missionMadBtn" class="primary">MAD</button>
+        <button id="launchBtn" class="warn">LAUNCH</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>HS STATUS</h3>
+      <div id="hsList"></div>
+    </div>
+
+    <div class="section">
+      <h3>CONTACT SUMMARY</h3>
+      <div class="kv"><span>推定海域半径</span><span id="contactRadiusLabel">---</span></div>
+      <div class="kv"><span>最終更新</span><span id="lastUpdateLabel">---</span></div>
+      <div class="kv"><span>探知手段</span><span id="sensorTypeLabel">---</span></div>
+      <div class="legend" style="margin-top:6px;">
+        緑円 = ソノブイ探知圏<br>
+        緑線 = SONO方位線<br>
+        水色円 = SNR有効圏<br>
+        黄円M = MAD探知点<br>
+        水色枠 = 選択中HS
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>ALERT / LOG</h3>
+      <div id="log" class="log"></div>
+    </div>
+  </aside>
 </div>
 
 <script>
+(() => {
+  const canvas = document.getElementById('game');
+  const seaWrap = document.getElementById('seaWrap');
+  const ctx = canvas.getContext('2d');
 
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+  const selectedLabel = document.getElementById('selectedLabel');
+  const selectedInfoEl = document.getElementById('selectedInfo');
+  const hsListEl = document.getElementById('hsList');
+  const logEl = document.getElementById('log');
+  const contactStateEl = document.getElementById('contactState');
+  const contactRadiusLabel = document.getElementById('contactRadiusLabel');
+  const lastUpdateLabel = document.getElementById('lastUpdateLabel');
+  const sensorTypeLabel = document.getElementById('sensorTypeLabel');
 
-function resize(){
-  canvas.width = window.innerWidth * 0.8;
-  canvas.height = window.innerHeight;
-}
-resize();
-window.onresize = resize;
+  const missionSnrBtn = document.getElementById('missionSnrBtn');
+  const missionSonoBtn = document.getElementById('missionSonoBtn');
+  const missionMadBtn = document.getElementById('missionMadBtn');
+  const launchBtn = document.getElementById('launchBtn');
 
-const SEA_NM = 2;
+  const SEA_NM = 2.0;
+  const WIND_FROM_DEG = 315;
+  const HS_SIZE_RATIO = 1 / 20;
 
-function rand(a,b){ return a + Math.random()*(b-a); }
-
-let helicopters = [];
-let buoys = [];
-let madContacts = [];
-
-let selected = null;
-
-let submarine = {
-  x: rand(0.3,1.7),
-  y: rand(0.3,1.7),
-  heading: Math.random()*Math.PI*2,
-  speed: 0.02
-};
-
-function createHS(x,y,id){
-  return {
-    id,
-    x,y,
-    tx:x, ty:y,
-    mission:'RADAR',
-    altitude:1000,
-    phase:'AI',
-    snrState:'NONE',
-    madTrack:false,
-    madAngle:0,
-    speed:0.02
+  const state = {
+    width: 1,
+    height: 1,
+    logs: [],
+    selected: null,
+    simTime: 0,
+    lastFrame: 0,
+    buoys: [],
+    madContacts: [],
+    contact: null,
+    lastContactTime: null,
+    lastContactSensor: null,
+    lastContactRadius: null,
+    whitecapSeedCount: 0
   };
-}
 
-helicopters = [
-  createHS(1,0.1,0),
-  createHS(0.1,1.8,1),
-  createHS(1.9,1.8,2)
-];
+  const submarine = {
+    x: 1.38,
+    y: 0.84,
+    heading: 2.2,
+    speed: 0.03
+  };
 
-canvas.onclick = e=>{
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.clientX-rect.left)/rect.width*SEA_NM;
-  const y = (e.clientY-rect.top)/rect.height*SEA_NM;
+  function makeHS(id, x, y) {
+    return {
+      id,
+      x, y, tx:x, ty:y,
+      heading: 0,
+      altitude: 1000,
+      desiredAltitude: 1000,
+      mission: 'RADAR',
+      phase: 'AI',
+      speed: 0.035,
+      selected: false,
+      rotorPhase: Math.random() * Math.PI * 2,
+      snrState: 'NONE', // NONE APPROACH DESCEND HOVER_WAIT ACTIVE EXIT_WAIT EXITING
+      snrWaitTimer: 0,
+      snrPulseTimer: 0,
+      snrPulseAge: 99,
+      snrContact: null,
+      gateX: null,
+      gateY: null,
+      finalX: null,
+      finalY: null,
+      madTrack: false,
+      madAngle: 0,
+      madCenterX: 0,
+      madCenterY: 0,
+      madTrackTimer: 0,
+      buoyPending: false
+    };
+  }
 
-  // HS選択
-  for(let h of helicopters){
-    let dx = h.x-x;
-    let dy = h.y-y;
-    if(Math.hypot(dx,dy)<0.05){
-      selected = h;
+  const helicopters = [
+    makeHS(0, 1.0, 0.10), // top
+    makeHS(1, 0.10, 1.80), // left lower
+    makeHS(2, 1.90, 1.80)  // right lower
+  ];
+
+  function degToRad(deg){ return deg * Math.PI / 180; }
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+  function wrapHeading(a){
+    while(a < -Math.PI) a += Math.PI * 2;
+    while(a > Math.PI) a -= Math.PI * 2;
+    return a;
+  }
+  function dist(ax, ay, bx, by){ return Math.hypot(ax - bx, ay - by); }
+  function nmX(x){ return x / SEA_NM * state.width; }
+  function nmY(y){ return y / SEA_NM * state.height; }
+  function pxToNmX(px){ return px / state.width * SEA_NM; }
+  function pxToNmY(py){ return py / state.height * SEA_NM; }
+
+  function resize(){
+    const rect = seaWrap.getBoundingClientRect();
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    state.width = rect.width;
+    state.height = rect.height;
+    state.whitecapSeedCount = Math.floor(state.width * state.height / 22000);
+  }
+
+  function nowStamp() {
+    const min = Math.floor(state.simTime / 60);
+    const sec = Math.floor(state.simTime % 60);
+    return `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  }
+
+  function addLog(msg){
+    state.logs.unshift(`[${nowStamp()}] ${msg}`);
+    state.logs = state.logs.slice(0, 45);
+    logEl.textContent = state.logs.join('\n');
+  }
+
+  function updateUI(){
+    if(!state.selected){
+      selectedLabel.textContent = 'NONE';
+      selectedInfoEl.innerHTML = `
+        <div class="small">HSをクリックまたはタップして選択。</div>
+        <div class="small">未選択時は全機AI飛行。</div>
+      `;
+    } else {
+      const h = state.selected;
+      selectedLabel.textContent = `HS-${h.id + 1}`;
+      selectedInfoEl.innerHTML = `
+        <div><strong>HS-${h.id + 1}</strong> / ${h.mission}</div>
+        <div class="small">PHASE: ${h.phase}</div>
+        <div class="small">ALT: ${Math.round(h.altitude)} FT</div>
+        <div class="small">POS: ${h.x.toFixed(2)}nm, ${h.y.toFixed(2)}nm</div>
+        <div class="small">SNR STATE: ${h.snrState}</div>
+        <div class="small">PCはクリック、タブレットはタップで操作</div>
+      `;
+    }
+
+    hsListEl.innerHTML = '';
+    helicopters.forEach(h => {
+      const div = document.createElement('div');
+      div.className = `hsCard ${state.selected === h ? 'selected' : ''}`;
+      div.innerHTML = `
+        <div class="kv"><strong>HS-${h.id + 1}</strong><span>${h.mission}</span></div>
+        <div class="kv"><span>PHASE</span><span>${h.phase}</span></div>
+        <div class="kv"><span>ALT</span><span>${Math.round(h.altitude)} ft</span></div>
+        <div class="kv"><span>POS</span><span>${h.x.toFixed(2)}, ${h.y.toFixed(2)}</span></div>
+      `;
+      div.addEventListener('click', () => {
+        setSelected(h);
+      });
+      hsListEl.appendChild(div);
+    });
+
+    if(state.contact){
+      contactStateEl.innerHTML = `<span class="badge contactBadge">TRACK</span>`;
+      contactRadiusLabel.textContent = `${state.lastContactRadius ?? '---'}`;
+      lastUpdateLabel.textContent = state.lastContactTime ?? '---';
+      sensorTypeLabel.textContent = state.lastContactSensor ?? '---';
+    } else {
+      contactStateEl.innerHTML = `<span class="badge lostBadge">LOST</span>`;
+      contactRadiusLabel.textContent = '---';
+      lastUpdateLabel.textContent = '---';
+      sensorTypeLabel.textContent = '---';
+    }
+  }
+
+  function setSelected(h) {
+    state.selected = h;
+    helicopters.forEach(x => x.selected = (x === h));
+    updateUI();
+  }
+
+  function setMission(mission){
+    if(!state.selected) return;
+    state.selected.mission = mission;
+    if(mission === 'SNR') state.selected.desiredAltitude = 150;
+    if(mission === 'SONO') state.selected.desiredAltitude = 1000;
+    if(mission === 'MAD') state.selected.desiredAltitude = 400;
+    addLog(`HS-${state.selected.id+1} mission set: ${mission}`);
+    updateUI();
+  }
+
+  missionSnrBtn.addEventListener('click', () => setMission('SNR'));
+  missionSonoBtn.addEventListener('click', () => setMission('SONO'));
+  missionMadBtn.addEventListener('click', () => setMission('MAD'));
+
+  launchBtn.addEventListener('click', () => {
+    if(!state.selected) return;
+    const h = state.selected;
+    if(h.mission !== 'SONO') return;
+    launchSono(h);
+  });
+
+  function launchSono(h){
+    state.buoys.push({
+      x: h.x,
+      y: h.y,
+      rangeNm: 0.22,
+      ttl: 8 * 60,
+      bearingLine: null,
+      bearingTimer: 0,
+      lostThreshold: 0.8 + Math.random() * 0.2
+    });
+    addLog(`HS-${h.id+1} SONO launched`);
+  }
+
+  function computeSonarGate(tx, ty){
+    const windTo = degToRad(WIND_FROM_DEG + 180);
+    const offset = 0.09;
+    return {
+      x: clamp(tx + Math.cos(windTo) * offset, 0.04, SEA_NM - 0.04),
+      y: clamp(ty + Math.sin(windTo) * offset, 0.04, SEA_NM - 0.04)
+    };
+  }
+
+  function getMadRangeNm(){ return 0.022; }
+  function getSnrRangeNm(){ return 0.05; }
+
+  function pointerToSea(clientX, clientY){
+    const rect = canvas.getBoundingClientRect();
+    const xPx = clientX - rect.left;
+    const yPx = clientY - rect.top;
+    if(xPx < 0 || yPx < 0 || xPx > rect.width || yPx > rect.height) return null;
+    return { x: pxToNmX(xPx), y: pxToNmY(yPx), xPx, yPx };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const p = pointerToSea(e.clientX, e.clientY);
+    if(!p) return;
+
+    // check selection on aircraft first
+    for(const h of helicopters){
+      if(dist(h.x, h.y, p.x, p.y) < 0.06){
+        setSelected(h);
+        return;
+      }
+    }
+
+    if(!state.selected) return;
+    const h = state.selected;
+
+    if(h.mission === 'SNR'){
+      if(h.snrState === 'ACTIVE'){
+        h.snrState = 'EXIT_WAIT';
+        h.snrWaitTimer = 5;
+        h.phase = 'MANUAL';
+        addLog(`HS-${h.id+1} dip ended, exit prep`);
+        return;
+      }
+      const gate = computeSonarGate(p.x, p.y);
+      h.finalX = p.x; h.finalY = p.y;
+      h.gateX = gate.x; h.gateY = gate.y;
+      h.tx = h.gateX; h.ty = h.gateY;
+      h.snrState = 'APPROACH';
+      h.phase = 'MANUAL';
+      h.desiredAltitude = 400;
+      h.madTrack = false;
+      addLog(`HS-${h.id+1} SNR approach`);
       return;
     }
+
+    if(h.mission === 'SONO'){
+      h.tx = p.x; h.ty = p.y;
+      h.phase = 'TRANSIT';
+      h.desiredAltitude = 1000;
+      h.buoyPending = true;
+      addLog(`HS-${h.id+1} SONO transit`);
+      return;
+    }
+
+    if(h.mission === 'MAD'){
+      h.tx = p.x; h.ty = p.y;
+      h.phase = 'TRANSIT';
+      h.desiredAltitude = 400;
+      h.madTrack = false;
+      addLog(`HS-${h.id+1} MAD transit`);
+      return;
+    }
+  });
+
+  function moveToward(h, tx, ty, dt, speedScale=1.0, turnRate=2.0){
+    const dx = tx - h.x;
+    const dy = ty - h.y;
+    const d = Math.hypot(dx, dy);
+    if(d < 0.0001) return d;
+
+    const desired = Math.atan2(dy, dx);
+    const diff = wrapHeading(desired - h.heading);
+    h.heading += clamp(diff, -turnRate * dt, turnRate * dt);
+
+    const step = h.speed * speedScale * dt;
+    h.x += Math.cos(h.heading) * Math.min(step, d);
+    h.y += Math.sin(h.heading) * Math.min(step, d);
+    return d;
   }
 
-  if(!selected) return;
+  function updateSubmarine(dt){
+    submarine.x += Math.cos(submarine.heading) * submarine.speed * dt;
+    submarine.y += Math.sin(submarine.heading) * submarine.speed * dt;
 
-  if(selected.mission==='SNR'){
-    selected.tx = x;
-    selected.ty = y;
-    selected.snrState = 'APPROACH';
-  } else {
-    selected.tx = x;
-    selected.ty = y;
-    selected.phase = 'TRANSIT';
-    selected.madTrack = false;
+    if(submarine.x < 0.03 || submarine.x > SEA_NM - 0.03){
+      submarine.heading = Math.PI - submarine.heading;
+      submarine.x = clamp(submarine.x, 0.03, SEA_NM - 0.03);
+    }
+    if(submarine.y < 0.03 || submarine.y > SEA_NM - 0.03){
+      submarine.heading = -submarine.heading;
+      submarine.y = clamp(submarine.y, 0.03, SEA_NM - 0.03);
+    }
   }
-};
 
-function setMission(m){
-  if(!selected) return;
-  selected.mission = m;
-}
+  function updateHS(h, dt){
+    h.rotorPhase += 20 * dt;
+    h.altitude += (h.desiredAltitude - h.altitude) * Math.min(1, dt * 1.8);
 
-function launch(){
-  if(!selected) return;
-  if(selected.mission==='SONO'){
-    buoys.push({x:selected.x,y:selected.y,life:60});
-  }
-}
-
-function update(dt){
-
-  // 潜水艦移動
-  submarine.x += Math.cos(submarine.heading)*submarine.speed*dt;
-  submarine.y += Math.sin(submarine.heading)*submarine.speed*dt;
-
-  // HS更新
-  helicopters.forEach(h=>{
-
-    // SNR処理
-    if(h.mission==='SNR'){
-      if(h.snrState==='APPROACH'){
-        move(h, h.tx, h.ty, dt);
-        if(dist(h,h.tx,h.ty)<0.05){
-          h.snrState='HOVER';
-          h.timer=5;
-        }
+    if(h.madTrack){
+      h.madTrackTimer -= dt;
+      if(h.madTrackTimer <= 0) {
+        h.madTrack = false;
       }
-      else if(h.snrState==='HOVER'){
-        h.timer-=dt;
-        if(h.timer<=0){
-          h.snrState='ACTIVE';
+    }
+
+    // SNR state machine
+    if(h.mission === 'SNR' || h.snrState !== 'NONE'){
+      if(h.snrState === 'APPROACH'){
+        moveToward(h, h.gateX, h.gateY, dt, 0.9, 1.3);
+        h.desiredAltitude = 400;
+        if(dist(h.x, h.y, h.gateX, h.gateY) < 0.03){
+          h.snrState = 'DESCEND';
         }
+        return;
       }
-      else if(h.snrState==='ACTIVE'){
-        let d = dist(h,submarine.x,submarine.y);
-        if(d<0.05){
-          // 探知
+      if(h.snrState === 'DESCEND'){
+        moveToward(h, h.finalX, h.finalY, dt, 0.45, 1.0);
+        h.desiredAltitude = 150;
+        if(dist(h.x, h.y, h.finalX, h.finalY) < 0.01 && Math.abs(h.altitude - 150) < 15){
+          h.snrState = 'HOVER_WAIT';
+          h.snrWaitTimer = 5;
+        }
+        return;
+      }
+      if(h.snrState === 'HOVER_WAIT'){
+        h.snrWaitTimer -= dt;
+        if(h.snrWaitTimer <= 0){
+          h.snrState = 'ACTIVE';
+          addLog(`HS-${h.id+1} sonar active`);
+        }
+        return;
+      }
+      if(h.snrState === 'ACTIVE'){
+        const hoverHeading = degToRad(WIND_FROM_DEG);
+        const diff = wrapHeading(hoverHeading - h.heading);
+        h.heading += clamp(diff, -0.9 * dt, 0.9 * dt);
+        h.x += (h.finalX - h.x) * 0.06;
+        h.y += (h.finalY - h.y) * 0.06;
+
+        h.snrPulseTimer += dt;
+        h.snrPulseAge += dt;
+        if(h.snrPulseTimer >= 5){
+          h.snrPulseTimer = 0;
+          h.snrPulseAge = 0;
+          const d = dist(h.x, h.y, submarine.x, submarine.y);
+          const maxR = getSnrRangeNm();
+          if(d <= maxR){
+            const trueBearing = Math.atan2(submarine.y - h.y, submarine.x - h.x);
+            const noisyBearing = trueBearing + (-0.10 + Math.random()*0.20) * 0.45;
+            const noisyRange = d * (1 + (-0.10 + Math.random()*0.20));
+            const cx = clamp(h.x + Math.cos(noisyBearing) * noisyRange, 0, SEA_NM);
+            const cy = clamp(h.y + Math.sin(noisyBearing) * noisyRange, 0, SEA_NM);
+
+            let lineStyle = 'solid';
+            if(d >= maxR * 0.7) lineStyle = 'dash';
+            if(d >= maxR * 0.8 && Math.random() < 0.55){
+              h.snrContact = null;
+            } else {
+              h.snrContact = { x:cx, y:cy, ttl:5, age:0, lineStyle };
+              state.contact = { x:cx, y:cy, radiusNm:0.035, sensor:'SNR' };
+              state.lastContactTime = nowStamp();
+              state.lastContactSensor = 'SNR';
+              state.lastContactRadius = '0.04 nm';
+            }
+          } else {
+            h.snrContact = null;
+          }
+        }
+        if(h.snrContact){
+          h.snrContact.age += dt;
+          if(h.snrContact.age > h.snrContact.ttl) h.snrContact = null;
+        }
+        return;
+      }
+      if(h.snrState === 'EXIT_WAIT'){
+        h.snrWaitTimer -= dt;
+        if(h.snrWaitTimer <= 0){
+          h.snrState = 'EXITING';
+        }
+        return;
+      }
+      if(h.snrState === 'EXITING'){
+        h.desiredAltitude = 400;
+        const fx = h.x + Math.cos(h.heading) * 0.06;
+        const fy = h.y + Math.sin(h.heading) * 0.06;
+        moveToward(h, fx, fy, dt, 1.0, 2.0);
+        if(h.altitude > 320){
+          h.snrState = 'NONE';
+          h.phase = 'AI';
+        }
+        return;
+      }
+    }
+
+    // MAD tracking auto-orbit
+    if(h.mission === 'MAD' && h.madTrack){
+      h.desiredAltitude = 400;
+      h.madAngle += 0.7 * dt * 8;
+      h.tx = clamp(h.madCenterX + Math.cos(h.madAngle) * 0.07, 0.08, SEA_NM - 0.08);
+      h.ty = clamp(h.madCenterY + Math.sin(h.madAngle) * 0.07, 0.08, SEA_NM - 0.08);
+      moveToward(h, h.tx, h.ty, dt, 1.0, 1.35);
+      return;
+    }
+
+    if(h.phase === 'TRANSIT'){
+      moveToward(h, h.tx, h.ty, dt, 1.0, (h.mission === 'MAD' || h.mission === 'SONO') ? 1.35 : 2.4);
+      if(dist(h.x, h.y, h.tx, h.ty) < 0.03){
+        if(h.mission === 'SONO'){
+          if(h.buoyPending){
+            launchSono(h);
+            h.buoyPending = false;
+          }
+          h.phase = 'AI';
+        } else if(h.mission === 'MAD'){
+          h.phase = 'AI';
+        } else {
+          h.phase = 'IDLE';
         }
       }
       return;
     }
 
-    // MAD追尾
-    if(h.mission==='MAD' && h.madTrack){
-      h.madAngle += dt;
-      let r=0.07;
-      h.tx = h.mx + Math.cos(h.madAngle)*r;
-      h.ty = h.my + Math.sin(h.madAngle)*r;
+    // AI sweep if not manually controlled
+    if(h.phase === 'AI' || h.phase === 'IDLE' || h.mission === 'RADAR'){
+      if(h.mission === 'MAD') h.desiredAltitude = 400;
+      else h.desiredAltitude = 1000;
+
+      const tooNearEdge = (h.x < 0.12 || h.x > SEA_NM - 0.12 || h.y < 0.12 || h.y > SEA_NM - 0.12);
+      const d = dist(h.x, h.y, h.tx, h.ty);
+      if(d < 0.03 || tooNearEdge){
+        h.tx = clamp(h.x + (Math.random() - 0.5) * 0.45, 0.12, SEA_NM - 0.12);
+        h.ty = clamp(h.y + (Math.random() - 0.5) * 0.45, 0.12, SEA_NM - 0.12);
+      }
+      moveToward(h, h.tx, h.ty, dt, 0.9, 1.25);
+    }
+  }
+
+  function updateBuoys(dt){
+    for(let i = state.buoys.length - 1; i >= 0; i--){
+      const b = state.buoys[i];
+      b.ttl -= dt;
+      b.bearingTimer += dt;
+      const d = dist(b.x, b.y, submarine.x, submarine.y);
+      const ratio = d / b.rangeNm;
+
+      if(d > b.rangeNm || ratio >= b.lostThreshold){
+        b.bearingLine = null;
+      } else if(b.bearingTimer >= 2){
+        b.bearingTimer = 0;
+        const trueBearing = Math.atan2(submarine.y - b.y, submarine.x - b.x);
+        b.bearingLine = {
+          bearing: trueBearing + degToRad(-30 + Math.random() * 60),
+          ttl: 2.1,
+          age: 0
+        };
+      }
+
+      if(b.bearingLine){
+        b.bearingLine.age += dt;
+        if(b.bearingLine.age > b.bearingLine.ttl) b.bearingLine = null;
+      }
+
+      if(b.ttl <= 0) state.buoys.splice(i, 1);
     }
 
-    // 通常移動
-    move(h,h.tx,h.ty,dt);
-
-    // 到達後AI復帰
-    if(dist(h,h.tx,h.ty)<0.05){
-      h.phase='AI';
-    }
-
-    // MAD探知
-    if(h.mission==='MAD'){
-      let d = dist(h,submarine.x,submarine.y);
-      if(d<0.025){
-        madContacts.push({x:submarine.x,y:submarine.y,life:60});
-        h.madTrack=true;
-        h.mx=submarine.x;
-        h.my=submarine.y;
+    // simple FIX from first 2 active lines
+    const active = state.buoys.filter(b => b.bearingLine);
+    if(active.length >= 2){
+      const b1 = active[0], b2 = active[1];
+      const p1 = {x:b1.x, y:b1.y};
+      const p2 = {x:b2.x, y:b2.y};
+      const a1 = b1.bearingLine.bearing, a2 = b2.bearingLine.bearing;
+      const d1 = {x:Math.cos(a1), y:Math.sin(a1)};
+      const d2 = {x:Math.cos(a2), y:Math.sin(a2)};
+      const denom = d1.x * d2.y - d1.y * d2.x;
+      if(Math.abs(denom) > 0.0001){
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const t1 = (dx * d2.y - dy * d2.x) / denom;
+        const ix = p1.x + d1.x * t1;
+        const iy = p1.y + d1.y * t1;
+        if(ix >= 0 && ix <= SEA_NM && iy >= 0 && iy <= SEA_NM){
+          state.contact = {x:ix, y:iy, radiusNm:0.07, sensor:'SONO-FIX'};
+          state.lastContactTime = nowStamp();
+          state.lastContactSensor = 'SONO-FIX';
+          state.lastContactRadius = '0.07 nm';
+        }
       }
     }
-
-  });
-
-  // ソノブイ更新
-  buoys.forEach(b=>{
-    b.life-=dt;
-  });
-
-  madContacts.forEach(m=>m.life-=dt);
-
-  buoys = buoys.filter(b=>b.life>0);
-  madContacts = madContacts.filter(m=>m.life>0);
-}
-
-function move(h,x,y,dt){
-  let dx=x-h.x;
-  let dy=y-h.y;
-  let d=Math.hypot(dx,dy);
-  if(d>0.001){
-    h.x+=dx/d*h.speed*dt;
-    h.y+=dy/d*h.speed*dt;
   }
-}
 
-function dist(h,x,y){
-  return Math.hypot(h.x-x,h.y-y);
-}
+  function updateMadDetection(dt){
+    for(const h of helicopters){
+      if(h.mission !== 'MAD') continue;
+      const d = dist(h.x, h.y, submarine.x, submarine.y);
+      if(h.altitude <= 500 && d <= getMadRangeNm()){
+        const mx = clamp(submarine.x + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
+        const my = clamp(submarine.y + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
+        state.madContacts.push({x:mx, y:my, life:60});
+        h.madTrack = true;
+        h.madCenterX = mx;
+        h.madCenterY = my;
+        h.madAngle = Math.atan2(h.y - my, h.x - mx);
+        h.madTrackTimer = 25;
 
-function draw(){
+        state.contact = {x:mx, y:my, radiusNm:0.08, sensor:'MAD'};
+        state.lastContactTime = nowStamp();
+        state.lastContactSensor = 'MAD';
+        state.lastContactRadius = '0.08 nm';
+      }
+    }
+    for(let i = state.madContacts.length - 1; i >= 0; i--){
+      state.madContacts[i].life -= dt;
+      if(state.madContacts[i].life <= 0) state.madContacts.splice(i, 1);
+    }
+  }
 
-  ctx.fillStyle="#082635";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  function update(dt){
+    state.simTime += dt;
+    updateSubmarine(dt);
+    helicopters.forEach(h => updateHS(h, dt));
+    updateBuoys(dt);
+    updateMadDetection(dt);
 
-  // 潜水艦（デバッグ）
-  ctx.fillStyle="red";
-  drawCircle(submarine.x,submarine.y,4);
+    if(state.contact){
+      // keep but fade if stale
+    }
+  }
 
-  // ソノブイ
-  ctx.strokeStyle="lime";
-  buoys.forEach(b=>{
-    drawCircle(b.x,b.y,20);
-  });
+  function drawSea(){
+    const grad = ctx.createLinearGradient(0,0,0,state.height);
+    grad.addColorStop(0, "#0f4868");
+    grad.addColorStop(0.55, "#0b3953");
+    grad.addColorStop(1, "#082635");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,state.width,state.height);
 
-  // MAD
-  madContacts.forEach(m=>{
-    let x=nmX(m.x), y=nmY(m.y);
-    ctx.strokeStyle="yellow";
+    const tm = performance.now() * 0.00008;
+    for(let i=0;i<14;i++){
+      const px = ((i*137 + tm*800) % (state.width+140)) - 70;
+      const py = (i*91) % state.height;
+      ctx.fillStyle = "rgba(255,255,255,0.02)";
+      ctx.fillRect(px, py, 90, 2);
+    }
+
+    drawWhitecaps();
+  }
+
+  function drawWhitecaps(){
+    const now = performance.now() * 0.001;
+    const wr = degToRad(WIND_FROM_DEG);
+    const wx = Math.cos(wr);
+    const wy = Math.sin(wr);
+    const angleBase = Math.atan2(wy, wx) + Math.PI / 2;
+    const count = state.whitecapSeedCount;
+
+    for(let i=0;i<count;i++){
+      const seed = i * 97.13;
+      const life = ((now * 0.45 + seed) % 1.0);
+      const alpha = Math.sin(life * Math.PI);
+
+      const pxBase = ((seed * 137.7) % 1) * state.width;
+      const pyBase = ((seed * 271.9) % 1) * state.height;
+
+      const drift = life * 10;
+      const x = pxBase + wx * drift;
+      const y = pyBase + wy * drift;
+      const r = 4 + ((seed * 53.1) % 1) * 5;
+      const arc = 0.6 + ((seed * 41.2) % 1) * 0.6;
+
+      ctx.beginPath();
+      ctx.arc(x, y, r, angleBase - arc/2, angleBase + arc/2);
+      ctx.strokeStyle = `rgba(255,255,255,${0.15 * alpha})`;
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+    }
+  }
+
+  function drawDownwashAt(x, y){
+    const t = performance.now() * 0.004;
     ctx.beginPath();
-    ctx.arc(x,y,10,0,Math.PI*2);
+    ctx.ellipse(x, y, 18 + Math.sin(t)*2, 8, 0, 0, Math.PI*2);
+    ctx.strokeStyle = "rgba(255,255,255,0.30)";
+    ctx.lineWidth = 2;
     ctx.stroke();
-    ctx.fillText("M",x,y);
-  });
 
-  // HS
-  helicopters.forEach(h=>{
-    ctx.fillStyle = (h===selected)?"cyan":"white";
-    drawCircle(h.x,h.y,6);
-  });
+    ctx.beginPath();
+    ctx.ellipse(x, y+2, 30 + Math.sin(t*0.8)*3, 12, 0, 0, Math.PI*2);
+    ctx.strokeStyle = "rgba(255,255,255,0.16)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
-}
+    for(let i=-2;i<=2;i++){
+      ctx.beginPath();
+      ctx.moveTo(x-18, y+i*3);
+      ctx.lineTo(x+18, y+i*3);
+      ctx.strokeStyle = "rgba(255,255,255,0.07)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
 
-function nmX(x){ return x/SEA_NM*canvas.width; }
-function nmY(y){ return y/SEA_NM*canvas.height; }
+  function drawHelicopterSprite(h, isSelected=false){
+    const x = nmX(h.x), y = nmY(h.y);
+    const altitudeScale = h.altitude <= 180 ? 1.10 : h.altitude <= 450 ? 1.03 : 0.94;
+    const size = Math.max(26, state.height * HS_SIZE_RATIO * altitudeScale);
+    const rotorR = size * 0.46;
 
-function drawCircle(x,y,r){
-  ctx.beginPath();
-  ctx.arc(nmX(x),nmY(y),r,0,Math.PI*2);
-  ctx.fill();
-}
+    if(isSelected){
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.62, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(119,231,255,0.95)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
 
-let last=0;
-function loop(t){
-  let dt=(t-last)/1000;
-  last=t;
-  update(dt);
-  draw();
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(h.heading + Math.PI/2);
+
+    if(h.mission === "SNR" && (h.snrState === "HOVER_WAIT" || h.snrState === "ACTIVE")){
+      drawDownwashAt(0, 8);
+    }
+
+    ctx.beginPath();
+    ctx.arc(0, 0, rotorR, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(220,240,255,0.06)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(220,240,255,0.15)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const spin = performance.now() * 0.03;
+    ctx.save();
+    ctx.rotate(spin);
+    for(let i=0;i<4;i++){
+      ctx.rotate(Math.PI/2);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -rotorR);
+      ctx.strokeStyle = "rgba(220,240,255,0.55)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.moveTo(0, size * 0.08);
+    ctx.lineTo(0, size * 0.68);
+    ctx.strokeStyle = "#d7e3ea";
+    ctx.lineWidth = Math.max(2, size * 0.08);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(0, -size * 0.05, size * 0.18, size * 0.33, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#d7e3ea";
+    ctx.fill();
+    ctx.strokeStyle = "#2b3940";
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.52);
+    ctx.lineTo(size * 0.11, -size * 0.22);
+    ctx.lineTo(-size * 0.11, -size * 0.22);
+    ctx.closePath();
+    ctx.fillStyle = "#d7e3ea";
+    ctx.fill();
+
+    ctx.fillStyle = "#aabac4";
+    ctx.fillRect(-size * 0.23, -size * 0.10, size * 0.12, size * 0.18);
+    ctx.fillRect(size * 0.11, -size * 0.10, size * 0.12, size * 0.18);
+    ctx.fillStyle = "#c9d5dc";
+    ctx.fillRect(-size * 0.05, size * 0.63, size * 0.10, size * 0.08);
+
+    if(h.mission === "MAD"){
+      ctx.fillStyle = "#ff5252";
+      ctx.fillRect(-size * 0.035, size * 0.71, size * 0.07, size * 0.04);
+      ctx.fillStyle = "#ffd54d";
+      ctx.fillRect(-size * 0.035, size * 0.75, size * 0.07, size * 0.03);
+    }
+
+    let light = "#9eff9e";
+    if(h.mission === "MAD") light = "#ffe08a";
+    if(h.mission === "SNR") light = "#9fe8ff";
+    if(h.phase === "TRANSIT") light = "#c9f2ff";
+    ctx.beginPath();
+    ctx.arc(0, size * 0.10, size * 0.08, 0, Math.PI * 2);
+    ctx.fillStyle = light;
+    ctx.fill();
+
+    ctx.restore();
+
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`HS-${h.id+1}`, x, y + size * 0.95);
+  }
+
+  function drawSonoBearings(){
+    for(const b of state.buoys){
+      if(!b.bearingLine) continue;
+      const x = nmX(b.x), y = nmY(b.y);
+      const len = b.rangeNm / SEA_NM * state.width * 2.0;
+      const bx = x + Math.cos(b.bearingLine.bearing) * len;
+      const by = y + Math.sin(b.bearingLine.bearing) * len;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(bx, by);
+      ctx.strokeStyle = 'rgba(120,255,160,0.95)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  function drawSnrEffects(){
+    const snrRange = getSnrRangeNm();
+    for(const h of helicopters){
+      if(h.mission !== 'SNR') continue;
+      if(!['HOVER_WAIT','ACTIVE'].includes(h.snrState)) continue;
+      const hx = nmX(h.x), hy = nmY(h.y);
+      const maxR = snrRange / SEA_NM * state.width;
+
+      ctx.beginPath();
+      ctx.arc(hx, hy, maxR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(120,220,255,0.18)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      const pulseT = h.snrPulseAge / 5;
+      if(pulseT >= 0 && pulseT <= 1){
+        const r = maxR * pulseT;
+        ctx.beginPath();
+        ctx.arc(hx, hy, r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(140,240,255,${0.55 * (1 - pulseT)})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      if(h.snrContact){
+        const cx = nmX(h.snrContact.x), cy = nmY(h.snrContact.y);
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(cx, cy);
+        if(h.snrContact.lineStyle === 'dash') ctx.setLineDash([6,5]);
+        ctx.strokeStyle = 'rgba(140,240,255,0.95)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(160,245,255,0.95)';
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawContact(){
+    if(!state.contact) return;
+    const x = nmX(state.contact.x), y = nmY(state.contact.y);
+    const r = (state.contact.radiusNm || 0.06) / SEA_NM * state.width;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,205,80,0.08)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,220,100,0.65)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7,5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function draw(){
+    drawSea();
+
+    for(const b of state.buoys){
+      const x = nmX(b.x), y = nmY(b.y);
+      const rr = b.rangeNm / SEA_NM * state.width;
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, Math.PI*2);
+      ctx.strokeStyle = "rgba(120,255,160,0.45)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI*2);
+      ctx.fillStyle = "#c8ffd6";
+      ctx.fill();
+    }
+
+    drawSonoBearings();
+    drawContact();
+    drawSnrEffects();
+
+    for(const m of state.madContacts){
+      const x = nmX(m.x), y = nmY(m.y);
+      const a = Math.max(0.25, Math.min(1, m.life / 60));
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,210,90,${0.8*a})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255,235,160,${0.95*a})`;
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("M", 0, 1);
+      ctx.restore();
+    }
+
+    helicopters.forEach(h => drawHelicopterSprite(h, state.selected === h));
+  }
+
+  function loop(ts){
+    if(!state.lastFrame) state.lastFrame = ts;
+    const dt = Math.min(0.05, (ts - state.lastFrame) / 1000);
+    state.lastFrame = ts;
+    update(dt);
+    draw();
+    updateUI();
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  addLog('SYSTEM READY: HS 3機 AI radar sweep');
+  updateUI();
   requestAnimationFrame(loop);
-}
-loop();
-
+})();
 </script>
 </body>
 </html>
