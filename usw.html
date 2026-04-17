@@ -250,7 +250,8 @@
       madTrackTimer: 0,
 
       madDeploy: 0,
-      madDeployTarget: 0
+      madDeployTarget: 0,
+      flashTimer: 0
     };
   }
 
@@ -259,6 +260,108 @@
     makeHS(1, 0.10, 1.80),
     makeHS(2, 1.90, 1.80)
   ];
+
+  function makeFalseTargets(){
+    const targets = [];
+
+    const thermalCount = 3 + Math.floor(Math.random() * 3); // 3〜5
+    for(let i=0;i<thermalCount;i++){
+      targets.push({
+        type:'THERMAL',
+        x: 0.12 + Math.random() * 1.76,
+        y: 0.12 + Math.random() * 1.76,
+        heading: 0,
+        speed: 0
+      });
+    }
+
+    if(Math.random() < 0.5){ // 0〜1
+      targets.push({
+        type:'WHALE',
+        x: 0.12 + Math.random() * 1.76,
+        y: 0.12 + Math.random() * 1.76,
+        heading: Math.random() * Math.PI * 2,
+        targetHeading: Math.random() * Math.PI * 2,
+        speed: submarine.maxSpeed * (0.4 + Math.random() * 0.35),
+        turnTimer: 8 + Math.random() * 12
+      });
+    }
+
+    const wreckCount = Math.floor(Math.random() * 4); // 0〜3
+    for(let i=0;i<wreckCount;i++){
+      targets.push({
+        type:'WRECK',
+        x: 0.12 + Math.random() * 1.76,
+        y: 0.12 + Math.random() * 1.76,
+        heading: 0,
+        speed: 0
+      });
+    }
+
+    return targets;
+  }
+
+  const falseTargets = makeFalseTargets();
+
+  function getAllContacts(){
+    return [{ type:'SUB', x:submarine.x, y:submarine.y, ref:submarine }, ...falseTargets];
+  }
+
+  function updateFalseTargets(dt){
+    for(const t of falseTargets){
+      if(t.type !== 'WHALE') continue;
+
+      t.turnTimer -= dt;
+      if(t.turnTimer <= 0){
+        t.targetHeading = t.heading + degToRad(-35 + Math.random() * 70);
+        t.turnTimer = 8 + Math.random() * 12;
+      }
+
+      const diff = wrapHeading(t.targetHeading - t.heading);
+      t.heading += clamp(diff, -degToRad(12) * dt, degToRad(12) * dt);
+
+      t.x += Math.cos(t.heading) * t.speed * dt;
+      t.y += Math.sin(t.heading) * t.speed * dt;
+
+      if(t.x < 0.04 || t.x > SEA_NM - 0.04){
+        t.heading = Math.PI - t.heading;
+        t.targetHeading = t.heading;
+        t.x = clamp(t.x, 0.04, SEA_NM - 0.04);
+      }
+      if(t.y < 0.04 || t.y > SEA_NM - 0.04){
+        t.heading = -t.heading;
+        t.targetHeading = t.heading;
+        t.y = clamp(t.y, 0.04, SEA_NM - 0.04);
+      }
+    }
+  }
+
+  function findNearestDetectableContact(x, y, rangeNm, sensorType){
+    let best = null;
+    let bestD = Infinity;
+
+    for(const c of getAllContacts()){
+      let detectable = false;
+      if(sensorType === 'SNR'){
+        detectable = true; // 全部拾う
+      } else if(sensorType === 'SONO'){
+        detectable = c.type === 'SUB';
+      } else if(sensorType === 'MAD'){
+        detectable = c.type === 'SUB' || c.type === 'WRECK';
+      }
+
+      if(!detectable) continue;
+      const d = dist(x, y, c.x, c.y);
+      if(d <= rangeNm && d < bestD){
+        best = c;
+        bestD = d;
+      }
+    }
+
+    return best ? { contact: best, distance: bestD } : null;
+  }
+
+
 
   function degToRad(deg){ return deg * Math.PI / 180; }
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
@@ -482,18 +585,35 @@
   }
 
   canvas.addEventListener('pointerdown', (e) => {
-    const p = pointerToSea(e.clientX, e.clientY);
-    if(!p) return;
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
 
-    // 機体選択
+    let nearest = null;
+    let minDist = Infinity;
+
     for(const h of helicopters){
       if(h.fuelState === 'OFFSCREEN') continue;
-      if(dist(h.x, h.y, p.x, p.y) < 0.09){
-        setSelected(h);
-        return;
+      const hx = nmX(h.x);
+      const hy = nmY(h.y);
+      const dpx = Math.hypot(hx - px, hy - py);
+      if(dpx < minDist){
+        minDist = dpx;
+        nearest = h;
       }
     }
 
+    if(nearest && minDist < 35){
+      if(nearest === state.selected){
+        nearest.flashTimer = 0.18;
+        return;
+      }
+      setSelected(nearest);
+      return;
+    }
+
+    const p = pointerToSea(e.clientX, e.clientY);
+    if(!p) return;
     if(!state.selected) return;
     const h = state.selected;
 
@@ -688,6 +808,7 @@
 
     h.rotorPhase += 20 * dt;
     h.altitude += (h.desiredAltitude - h.altitude) * Math.min(1, dt * 1.8);
+    if(h.flashTimer > 0) h.flashTimer -= dt;
 
     // MAD 展開 / 収納 5秒
     if(h.madDeploy !== h.madDeployTarget){
@@ -788,10 +909,12 @@
           submarine.targetHeading = Math.atan2(submarine.y - h.y, submarine.x - h.x);
           submarine.targetSpeed = Math.max(submarine.targetSpeed, submarine.maxSpeed * 0.8);
 
-          const d = dist(h.x, h.y, submarine.x, submarine.y);
           const maxR = getSnrRangeNm();
-          if(d <= maxR){
-            const trueBearing = Math.atan2(submarine.y - h.y, submarine.x - h.x);
+          const snrHit = findNearestDetectableContact(h.x, h.y, maxR, 'SNR');
+          if(snrHit){
+            const target = snrHit.contact;
+            const d = snrHit.distance;
+            const trueBearing = Math.atan2(target.y - h.y, target.x - h.x);
             const noisyBearing = trueBearing + (-0.10 + Math.random()*0.20) * 0.45;
             const noisyRange = d * (1 + (-0.10 + Math.random()*0.20));
             const cx = clamp(h.x + Math.cos(noisyBearing) * noisyRange, 0, SEA_NM);
@@ -805,9 +928,9 @@
               h.snrContact = { x:cx, y:cy, ttl:5, age:0, lineStyle };
               state.contact = { x:cx, y:cy, radiusNm:0.035, sensor:'SNR' };
               state.lastContactTime = nowStamp();
-              state.lastContactSensor = 'SNR';
+              state.lastContactSensor = `SNR-${target.type}`;
               state.lastContactRadius = '0.04 nm';
-              state.lastDetectionTime = state.simTime;
+              if(target.type === 'SUB') state.lastDetectionTime = state.simTime;
             }
           } else {
             h.snrContact = null;
@@ -879,21 +1002,23 @@
       b.ttl -= dt;
       b.bearingTimer += dt;
 
-      const d = dist(b.x, b.y, submarine.x, submarine.y);
-      const ratio = d / b.rangeNm;
-
-      if(d > b.rangeNm){
-        b.bearingLine = null;
-      } else if(ratio >= b.lostThreshold){
+      const sonoHit = findNearestDetectableContact(b.x, b.y, b.rangeNm, 'SONO');
+      if(!sonoHit){
         b.bearingLine = null;
       } else {
-        // v1.3: 探知圏内では表示を維持し続け、2秒ごとに更新
-        if(!b.bearingLine || b.bearingTimer >= 2){
-          b.bearingTimer = 0;
-          const trueBearing = Math.atan2(submarine.y - b.y, submarine.x - b.x);
-          b.bearingLine = {
-            bearing: trueBearing + degToRad(-30 + Math.random() * 60)
-          };
+        const d = sonoHit.distance;
+        const ratio = d / b.rangeNm;
+        if(ratio >= b.lostThreshold){
+          b.bearingLine = null;
+        } else {
+          if(!b.bearingLine || b.bearingTimer >= 2){
+            b.bearingTimer = 0;
+            const target = sonoHit.contact;
+            const trueBearing = Math.atan2(target.y - b.y, target.x - b.x);
+            b.bearingLine = {
+              bearing: trueBearing + degToRad(-30 + Math.random() * 60)
+            };
+          }
         }
       }
 
@@ -962,6 +1087,7 @@
   function update(dt){
     state.simTime += dt;
     updateSubmarine(dt);
+    updateFalseTargets(dt);
     helicopters.forEach(h => updateHS(h, dt));
     updateBuoyBearings(dt);
     updateMadDetection(dt);
@@ -1082,6 +1208,13 @@
       ctx.beginPath();
       ctx.arc(x, y, baseSize * 0.68, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(119,231,255,0.95)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    if(h.flashTimer > 0){
+      ctx.beginPath();
+      ctx.arc(x, y, baseSize * 0.82, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,255,255,${Math.min(1, h.flashTimer / 0.18)})`;
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -1443,6 +1576,7 @@
   window.addEventListener('resize', resize);
   resize();
   addLog('SYSTEM READY: HS 3機 AUTO radar sweep');
+  addLog(`FALSE TARGETS: THERMAL ${falseTargets.filter(t=>t.type==='THERMAL').length} / WHALE ${falseTargets.filter(t=>t.type==='WHALE').length} / WRECK ${falseTargets.filter(t=>t.type==='WRECK').length}`);
   updateUI();
   requestAnimationFrame(loop);
 })();
