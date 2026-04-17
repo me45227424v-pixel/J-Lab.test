@@ -224,6 +224,7 @@
       phase: 'AI',
       speed: HS_MAX_SPEED,
       rotorPhase: Math.random() * Math.PI * 2,
+      flashTimer: 0,
 
       fuel: FUEL_START_LBS,
       fuelState: 'NORMAL', // NORMAL / LOW / OFFSCREEN / RETURN
@@ -589,9 +590,101 @@
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
 
+    const p = pointerToSea(e.clientX, e.clientY);
+    if(!p) return;
+
+    const SELECT_RADIUS = 26;
+    const RESELECT_RADIUS = 22;
+
+    // 1) まず現在選択中の機体だけは近距離再タップを受ける
+    if(state.selected && state.selected.fuelState !== 'OFFSCREEN'){
+      const sx = nmX(state.selected.x);
+      const sy = nmY(state.selected.y);
+      const sd = Math.hypot(sx - px, sy - py);
+      if(sd <= RESELECT_RADIUS){
+        state.selected.flashTimer = 0.18;
+        return;
+      }
+    }
+
+    // 2) 既に機体が選択され、任務が選ばれている場合は「海面指示」を優先
+    if(state.selected && state.selected.mission !== 'RADAR'){
+      const h = state.selected;
+
+      if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN'){
+        addLog(`HS-${h.id+1} cannot accept task while RTB`);
+        return;
+      }
+
+      // ただし他機のすぐ近くなら選択切替を優先
+      let nearestOther = null;
+      let minOtherDist = Infinity;
+      for(const other of helicopters){
+        if(other === h) continue;
+        if(other.fuelState === 'OFFSCREEN') continue;
+        const ox = nmX(other.x);
+        const oy = nmY(other.y);
+        const od = Math.hypot(ox - px, oy - py);
+        if(od < minOtherDist){
+          minOtherDist = od;
+          nearestOther = other;
+        }
+      }
+
+      if(nearestOther && minOtherDist <= SELECT_RADIUS){
+        setSelected(nearestOther);
+        return;
+      }
+
+      state.plannedPoint = { x: p.x, y: p.y, ttl: 9999 };
+
+      if(h.mission === 'SNR'){
+        if(h.snrState === 'ACTIVE'){
+          h.snrState = 'EXIT_WAIT';
+          h.snrWaitTimer = 5;
+          h.phase = 'MANUAL';
+          addLog(`HS-${h.id+1} dip ended, exit prep`);
+          return;
+        }
+
+        const gate = computeSonarGate(p.x, p.y);
+        h.finalX = p.x;
+        h.finalY = p.y;
+        h.gateX = gate.x;
+        h.gateY = gate.y;
+        h.tx = gate.x;
+        h.ty = gate.y;
+        h.snrState = 'APPROACH';
+        h.phase = 'MANUAL';
+        h.desiredAltitude = 400;
+        h.madTrack = false;
+        addLog(`HS-${h.id+1} SNR approach`);
+        return;
+      }
+
+      if(h.mission === 'SONO'){
+        h.tx = p.x;
+        h.ty = p.y;
+        h.phase = 'TRANSIT';
+        h.desiredAltitude = 1000;
+        addLog(`HS-${h.id+1} SONO transit`);
+        return;
+      }
+
+      if(h.mission === 'MAD'){
+        h.tx = p.x;
+        h.ty = p.y;
+        h.phase = 'TRANSIT';
+        h.desiredAltitude = 400;
+        h.madTrack = false;
+        addLog(`HS-${h.id+1} MAD transit`);
+        return;
+      }
+    }
+
+    // 3) それ以外の状態では通常の機体選択
     let nearest = null;
     let minDist = Infinity;
-
     for(const h of helicopters){
       if(h.fuelState === 'OFFSCREEN') continue;
       const hx = nmX(h.x);
@@ -603,71 +696,8 @@
       }
     }
 
-    // 選択は機体近傍だけで成立させる。
-    // 近すぎない海面タップは必ず移動/任務指示へ流す。
-    const SELECT_RADIUS = 26;
-
     if(nearest && minDist <= SELECT_RADIUS){
-      if(nearest === state.selected){
-        nearest.flashTimer = 0.18;
-        return;
-      }
       setSelected(nearest);
-      return;
-    }
-
-    const p = pointerToSea(e.clientX, e.clientY);
-    if(!p) return;
-    if(!state.selected) return;
-    const h = state.selected;
-
-    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN'){
-      addLog(`HS-${h.id+1} cannot accept task while RTB`);
-      return;
-    }
-
-    state.plannedPoint = { x: p.x, y: p.y, ttl: 9999 };
-
-    if(h.mission === 'SNR'){
-      if(h.snrState === 'ACTIVE'){
-        h.snrState = 'EXIT_WAIT';
-        h.snrWaitTimer = 5;
-        h.phase = 'MANUAL';
-        addLog(`HS-${h.id+1} dip ended, exit prep`);
-        return;
-      }
-
-      const gate = computeSonarGate(p.x, p.y);
-      h.finalX = p.x;
-      h.finalY = p.y;
-      h.gateX = gate.x;
-      h.gateY = gate.y;
-      h.tx = gate.x;
-      h.ty = gate.y;
-      h.snrState = 'APPROACH';
-      h.phase = 'MANUAL';
-      h.desiredAltitude = 400;
-      h.madTrack = false;
-      addLog(`HS-${h.id+1} SNR approach`);
-      return;
-    }
-
-    if(h.mission === 'SONO'){
-      h.tx = p.x;
-      h.ty = p.y;
-      h.phase = 'TRANSIT';
-      h.desiredAltitude = 1000;
-      addLog(`HS-${h.id+1} SONO transit`);
-      return;
-    }
-
-    if(h.mission === 'MAD'){
-      h.tx = p.x;
-      h.ty = p.y;
-      h.phase = 'TRANSIT';
-      h.desiredAltitude = 400;
-      h.madTrack = false;
-      addLog(`HS-${h.id+1} MAD transit`);
       return;
     }
   });
@@ -811,6 +841,7 @@
     if(h.fuelState === 'OFFSCREEN') return;
 
     h.rotorPhase += 20 * dt;
+    if(h.flashTimer > 0) h.flashTimer = Math.max(0, h.flashTimer - dt);
     h.altitude += (h.desiredAltitude - h.altitude) * Math.min(1, dt * 1.8);
     if(h.flashTimer > 0) h.flashTimer -= dt;
 
@@ -1208,11 +1239,12 @@
     const baseSize = Math.max(24, state.height * HS_SIZE_RATIO * 0.80 * altitudeScale);
     const rotorR = baseSize * 0.44;
 
-    if(isSelected){
+    if(isSelected || h.flashTimer > 0){
       ctx.beginPath();
       ctx.arc(x, y, baseSize * 0.68, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(119,231,255,0.95)";
-      ctx.lineWidth = 2;
+      const a = h.flashTimer > 0 ? 1.0 : 0.95;
+      ctx.strokeStyle = `rgba(119,231,255,${a})`;
+      ctx.lineWidth = h.flashTimer > 0 ? 3 : 2;
       ctx.stroke();
     }
     if(h.flashTimer > 0){
