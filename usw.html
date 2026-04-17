@@ -1,861 +1,258 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>JLab USW MVP</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JLab USW Simulator</title>
 <style>
-  :root {
-    --panel-bg: #050505;
-    --panel-border: #1f1f1f;
-    --text: #b7ffb7;
-    --amber: #ffcf66;
-    --cyan: #77e7ff;
-    --danger: #ff6b6b;
-    --sea1: #0f3d57;
-    --sea2: #0a2b40;
-    --sea3: #144f73;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body {
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    touch-action: manipulation;
-  }
-  #app {
-    display: flex;
-    width: 100vw;
-    height: 100vh;
-  }
-  #seaWrap {
-    position: relative;
-    width: 80vw;
-    height: 100vh;
-    overflow: hidden;
-    background: linear-gradient(180deg, var(--sea1), var(--sea2));
-  }
-  #seaCanvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-    touch-action: none;
-    cursor: crosshair;
-  }
-  #panel {
-    width: 20vw;
-    min-width: 240px;
-    height: 100vh;
-    background: var(--panel-bg);
-    color: var(--text);
-    border-left: 2px solid var(--panel-border);
-    padding: 12px 10px 12px 12px;
-    overflow: auto;
-  }
-  .title {
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    margin: 2px 0 10px;
-    color: #e8ffe8;
-  }
-  .section {
-    border: 1px solid #173117;
-    padding: 8px;
-    margin-bottom: 10px;
-    background: rgba(0, 30, 0, 0.16);
-  }
-  .section h3 {
-    margin: 0 0 6px;
-    font-size: 13px;
-    color: var(--amber);
-    letter-spacing: 0.06em;
-  }
-  .kv {
-    display: flex;
-    justify-content: space-between;
-    gap: 6px;
-    font-size: 12px;
-    line-height: 1.5;
-  }
-  .small {
-    font-size: 11px;
-    opacity: 0.9;
-  }
-  .hsCard {
-    border: 1px solid #234423;
-    padding: 6px;
-    margin: 6px 0;
-    background: rgba(0, 20, 0, 0.22);
-  }
-  .hsCard.selected {
-    outline: 2px solid var(--cyan);
-  }
-  .status-transit { color: #c9f2ff; }
-  .status-search { color: #c7ffc7; }
-  .status-deploy { color: #ffe59a; }
-  .status-rtb { color: #ffaaaa; }
-  .btnRow {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 6px;
-    margin-top: 8px;
-  }
-  button {
-    width: 100%;
-    border: 1px solid #355335;
-    background: #0c160c;
-    color: var(--text);
-    padding: 8px 10px;
-    border-radius: 6px;
-    font-size: 13px;
-  }
-  button:active { transform: scale(0.99); }
-  button.primary {
-    border-color: #337c8c;
-    color: #d6faff;
-    background: #0d1b20;
-  }
-  button.warn {
-    border-color: #8c6d20;
-    color: #fff0c2;
-    background: #201b0d;
-  }
-  .log {
-    font-size: 11px;
-    line-height: 1.45;
-    max-height: 30vh;
-    overflow: auto;
-    white-space: pre-wrap;
-  }
-  .legend {
-    font-size: 11px;
-    line-height: 1.4;
-    color: #b9d9ff;
-  }
-  .badge {
-    display: inline-block;
-    min-width: 54px;
-    text-align: center;
-    font-size: 11px;
-    padding: 2px 5px;
-    border-radius: 999px;
-    border: 1px solid #295729;
-  }
-  .contactBadge { color: #fff0c2; border-color: #8c6d20; }
-  .lostBadge { color: #ffc2c2; border-color: #7a2e2e; }
-  @media (max-width: 950px) {
-    #panel { min-width: 210px; }
-  }
+  body { margin:0; display:flex; background:#000; color:#0f0; font-family:monospace; }
+  canvas { flex:4; background:#000; }
+  #panel { flex:1; background:#111; padding:10px; }
+  button { width:100%; margin:4px 0; }
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="seaWrap">
-    <canvas id="seaCanvas"></canvas>
-  </div>
-  <aside id="panel">
-    <div class="title">USW // HS-3 MVP</div>
 
-    <div class="section">
-      <h3>MISSION</h3>
-      <div class="kv"><span>AREA</span><span>2.0 nm × 2.0 nm</span></div>
-      <div class="kv"><span>PHASE</span><span>追尾終盤 / 局限戦闘</span></div>
-      <div class="kv"><span>OBJECTIVE</span><span>探知 / 類別 / 追尾 / 攻撃</span></div>
-      <div class="kv"><span>TIME SCALE</span><span id="timeScaleLabel">1×</span></div>
-      <div class="kv"><span>ELAPSED</span><span id="elapsedLabel">00:00</span></div>
-      <div class="kv"><span>CONTACT</span><span id="contactState"><span class="badge lostBadge">LOST</span></span></div>
-    </div>
+<canvas id="game"></canvas>
 
-    <div class="section">
-      <h3>SELECTED AIRCRAFT</h3>
-      <div id="selectedInfo" class="small">HSを選択して海面をタップすると移動命令。</div>
-      <div class="btnRow">
-        <button id="deployBuoyBtn" class="warn">SELECTED HSでソノブイ投下</button>
-        <button id="cycleSpeedBtn" class="primary">時間加速を切替</button>
-      </div>
-    </div>
-
-    <div class="section">
-      <h3>HS STATUS</h3>
-      <div id="hsList"></div>
-    </div>
-
-    <div class="section">
-      <h3>CONTACT SUMMARY</h3>
-      <div class="kv"><span>推定海域半径</span><span id="contactRadiusLabel">---</span></div>
-      <div class="kv"><span>最終更新</span><span id="lastUpdateLabel">---</span></div>
-      <div class="kv"><span>探知手段</span><span id="sensorTypeLabel">---</span></div>
-      <div class="legend" style="margin-top:6px;">
-        緑円 = ソノブイ探知圏<br>
-        黄パルス = 接触更新位置<br>
-        水色枠 = 選択中HS<br>
-        白点線 = 移動命令
-      </div>
-    </div>
-
-    <div class="section">
-      <h3>ALERT / LOG</h3>
-      <div id="log" class="log"></div>
-    </div>
-  </aside>
+<div id="panel">
+  <div id="info">NO SELECTION</div>
+  <button onclick="setMission('SNR')">SNR</button>
+  <button onclick="setMission('SONO')">SONO</button>
+  <button onclick="setMission('MAD')">MAD</button>
+  <button onclick="launch()">LAUNCH</button>
 </div>
 
 <script>
-(() => {
-  const canvas = document.getElementById('seaCanvas');
-  const ctx = canvas.getContext('2d');
 
-  const hsListEl = document.getElementById('hsList');
-  const selectedInfoEl = document.getElementById('selectedInfo');
-  const logEl = document.getElementById('log');
-  const elapsedLabel = document.getElementById('elapsedLabel');
-  const timeScaleLabel = document.getElementById('timeScaleLabel');
-  const contactStateEl = document.getElementById('contactState');
-  const contactRadiusLabel = document.getElementById('contactRadiusLabel');
-  const lastUpdateLabel = document.getElementById('lastUpdateLabel');
-  const sensorTypeLabel = document.getElementById('sensorTypeLabel');
-  const deployBuoyBtn = document.getElementById('deployBuoyBtn');
-  const cycleSpeedBtn = document.getElementById('cycleSpeedBtn');
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
 
-  const SEA_NM = 2.0;
-  const HS_SIZE_RATIO = 1 / 20;
-  const timeScales = [1, 2, 4];
-  let timeScaleIndex = 0;
+function resize(){
+  canvas.width = window.innerWidth * 0.8;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.onresize = resize;
 
-  const state = {
-    width: 1,
-    height: 1,
-    selectedHsId: 0,
-    simSeconds: 0,
-    lastTimestamp: 0,
-    wavePhase: 0,
-    logs: [],
-    buoys: [],
-    ripples: [],
-    contact: null,
-    hiddenSubVisibleForDebug: false,
+const SEA_NM = 2;
+
+function rand(a,b){ return a + Math.random()*(b-a); }
+
+let helicopters = [];
+let buoys = [];
+let madContacts = [];
+
+let selected = null;
+
+let submarine = {
+  x: rand(0.3,1.7),
+  y: rand(0.3,1.7),
+  heading: Math.random()*Math.PI*2,
+  speed: 0.02
+};
+
+function createHS(x,y,id){
+  return {
+    id,
+    x,y,
+    tx:x, ty:y,
+    mission:'RADAR',
+    altitude:1000,
+    phase:'AI',
+    snrState:'NONE',
+    madTrack:false,
+    madAngle:0,
+    speed:0.02
   };
+}
 
-  const helicopters = [
-    makeHelicopter(0, 'HS-1', 0.18, 0.25),
-    makeHelicopter(1, 'HS-2', 0.18, 0.50),
-    makeHelicopter(2, 'HS-3', 0.18, 0.75),
-  ];
+helicopters = [
+  createHS(1,0.1,0),
+  createHS(0.1,1.8,1),
+  createHS(1.9,1.8,2)
+];
 
-  const submarine = {
-    xNm: 1.56,
-    yNm: 0.82,
-    heading: Math.PI * 1.22,
-    speedKts: 6.5,
-    noise: 0.75,
-    alive: true,
-    evadeTimer: 0,
-    lastTurnTimer: 0,
-  };
+canvas.onclick = e=>{
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX-rect.left)/rect.width*SEA_NM;
+  const y = (e.clientY-rect.top)/rect.height*SEA_NM;
 
-  function makeHelicopter(id, callsign, xFrac, yFrac) {
-    return {
-      id,
-      callsign,
-      xNm: xFrac * SEA_NM,
-      yNm: yFrac * SEA_NM,
-      targetXNm: xFrac * SEA_NM,
-      targetYNm: yFrac * SEA_NM,
-      heading: 0,
-      speedKts: 120,
-      fuel: 100,
-      buoys: 8,
-      status: 'SEARCH',
-      selected: id === 0,
-      rotor: Math.random() * Math.PI * 2,
-      contactCooldown: 0,
-      actionCooldown: 0,
-    };
-  }
-
-  function resize() {
-    const rect = canvas.getBoundingClientRect();
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    canvas.width = Math.floor(rect.width * dpr);
-    canvas.height = Math.floor(rect.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    state.width = rect.width;
-    state.height = rect.height;
-  }
-
-  function log(msg, kind = 'info') {
-    const stamp = formatTime(state.simSeconds);
-    state.logs.unshift(`[${stamp}] ${msg}`);
-    state.logs = state.logs.slice(0, 50);
-    logEl.textContent = state.logs.join('\n');
-  }
-
-  function formatTime(totalSeconds) {
-    const sec = Math.floor(totalSeconds % 60);
-    const min = Math.floor(totalSeconds / 60);
-    return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-  }
-
-  function nmToPxX(xNm) { return xNm / SEA_NM * state.width; }
-  function nmToPxY(yNm) { return yNm / SEA_NM * state.height; }
-  function pxToNmX(px) { return px / state.width * SEA_NM; }
-  function pxToNmY(py) { return py / state.height * SEA_NM; }
-
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-  }
-
-  function wrapHeading(rad) {
-    while (rad < -Math.PI) rad += Math.PI * 2;
-    while (rad > Math.PI) rad -= Math.PI * 2;
-    return rad;
-  }
-
-  function distNm(ax, ay, bx, by) {
-    const dx = ax - bx;
-    const dy = ay - by;
-    return Math.hypot(dx, dy);
-  }
-
-  function getSelectedHs() {
-    return helicopters.find(h => h.id === state.selectedHsId) || helicopters[0];
-  }
-
-  function setSelectedHs(id) {
-    state.selectedHsId = id;
-    helicopters.forEach(h => h.selected = h.id === id);
-    renderHsList();
-    updateSelectedInfo();
-  }
-
-  function updateSelectedInfo() {
-    const hs = getSelectedHs();
-    selectedInfoEl.innerHTML = `
-      <div><strong>${hs.callsign}</strong> / <span class="status-${hs.status.toLowerCase()}">${hs.status}</span></div>
-      <div class="small">海面タップ: 移動命令</div>
-      <div class="small">現在位置: ${hs.xNm.toFixed(2)}nm, ${hs.yNm.toFixed(2)}nm</div>
-      <div class="small">残ブイ: ${hs.buoys} / Fuel: ${hs.fuel.toFixed(0)}%</div>
-    `;
-  }
-
-  function renderHsList() {
-    hsListEl.innerHTML = '';
-    helicopters.forEach(hs => {
-      const div = document.createElement('div');
-      div.className = `hsCard ${hs.selected ? 'selected' : ''}`;
-      div.innerHTML = `
-        <div class="kv"><strong>${hs.callsign}</strong><span class="status-${hs.status.toLowerCase()}">${hs.status}</span></div>
-        <div class="kv"><span>Fuel</span><span>${hs.fuel.toFixed(0)}%</span></div>
-        <div class="kv"><span>Buoy</span><span>${hs.buoys}</span></div>
-        <div class="kv"><span>Pos</span><span>${hs.xNm.toFixed(2)}, ${hs.yNm.toFixed(2)}</span></div>
-      `;
-      div.addEventListener('click', () => setSelectedHs(hs.id));
-      hsListEl.appendChild(div);
-    });
-  }
-
-  function updatePanel() {
-    const ts = timeScales[timeScaleIndex];
-    elapsedLabel.textContent = formatTime(state.simSeconds);
-    timeScaleLabel.textContent = `${ts}×`;
-    if (state.contact) {
-      contactStateEl.innerHTML = `<span class="badge contactBadge">TRACK</span>`;
-      contactRadiusLabel.textContent = `${state.contact.radiusNm.toFixed(2)} nm`;
-      lastUpdateLabel.textContent = formatTime(state.contact.lastUpdate);
-      sensorTypeLabel.textContent = state.contact.sensor;
-    } else {
-      contactStateEl.innerHTML = `<span class="badge lostBadge">LOST</span>`;
-      contactRadiusLabel.textContent = '---';
-      lastUpdateLabel.textContent = '---';
-      sensorTypeLabel.textContent = '---';
-    }
-    updateSelectedInfo();
-    renderHsList();
-  }
-
-  function commandMoveSeaTap(clientX, clientY) {
-    const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
-    const hs = getSelectedHs();
-    hs.targetXNm = clamp(pxToNmX(x), 0.03, SEA_NM - 0.03);
-    hs.targetYNm = clamp(pxToNmY(y), 0.03, SEA_NM - 0.03);
-    hs.status = 'TRANSIT';
-    log(`${hs.callsign} 新規移動命令。(${hs.targetXNm.toFixed(2)}nm, ${hs.targetYNm.toFixed(2)}nm)`);
-    renderHsList();
-  }
-
-  function deployBuoyFromSelected() {
-    const hs = getSelectedHs();
-    if (hs.buoys <= 0) {
-      log(`${hs.callsign} ソノブイ残数なし。`, 'warn');
+  // HS選択
+  for(let h of helicopters){
+    let dx = h.x-x;
+    let dy = h.y-y;
+    if(Math.hypot(dx,dy)<0.05){
+      selected = h;
       return;
     }
-    if (hs.actionCooldown > 0) return;
-    hs.buoys -= 1;
-    hs.status = 'DEPLOY';
-    hs.actionCooldown = 2.5;
-    const buoy = {
-      xNm: hs.xNm,
-      yNm: hs.yNm,
-      rangeNm: 0.22,
-      ttl: 8 * 60,
-      pulse: 0,
-      id: Date.now() + Math.random(),
-    };
-    state.buoys.push(buoy);
-    state.ripples.push({ xNm: buoy.xNm, yNm: buoy.yNm, t: 0, life: 1.2, color: '255,255,255' });
-    log(`${hs.callsign} ソノブイ投下。監視開始。`);
-    renderHsList();
   }
 
-  function updateHelicopter(hs, dtReal, dtSim) {
-    hs.rotor += 18 * dtReal;
-    hs.fuel = Math.max(0, hs.fuel - 0.010 * dtSim);
-    if (hs.actionCooldown > 0) {
-      hs.actionCooldown -= dtReal;
-      if (hs.actionCooldown <= 0) {
-        hs.status = 'SEARCH';
+  if(!selected) return;
+
+  if(selected.mission==='SNR'){
+    selected.tx = x;
+    selected.ty = y;
+    selected.snrState = 'APPROACH';
+  } else {
+    selected.tx = x;
+    selected.ty = y;
+    selected.phase = 'TRANSIT';
+    selected.madTrack = false;
+  }
+};
+
+function setMission(m){
+  if(!selected) return;
+  selected.mission = m;
+}
+
+function launch(){
+  if(!selected) return;
+  if(selected.mission==='SONO'){
+    buoys.push({x:selected.x,y:selected.y,life:60});
+  }
+}
+
+function update(dt){
+
+  // 潜水艦移動
+  submarine.x += Math.cos(submarine.heading)*submarine.speed*dt;
+  submarine.y += Math.sin(submarine.heading)*submarine.speed*dt;
+
+  // HS更新
+  helicopters.forEach(h=>{
+
+    // SNR処理
+    if(h.mission==='SNR'){
+      if(h.snrState==='APPROACH'){
+        move(h, h.tx, h.ty, dt);
+        if(dist(h,h.tx,h.ty)<0.05){
+          h.snrState='HOVER';
+          h.timer=5;
+        }
+      }
+      else if(h.snrState==='HOVER'){
+        h.timer-=dt;
+        if(h.timer<=0){
+          h.snrState='ACTIVE';
+        }
+      }
+      else if(h.snrState==='ACTIVE'){
+        let d = dist(h,submarine.x,submarine.y);
+        if(d<0.05){
+          // 探知
+        }
+      }
+      return;
+    }
+
+    // MAD追尾
+    if(h.mission==='MAD' && h.madTrack){
+      h.madAngle += dt;
+      let r=0.07;
+      h.tx = h.mx + Math.cos(h.madAngle)*r;
+      h.ty = h.my + Math.sin(h.madAngle)*r;
+    }
+
+    // 通常移動
+    move(h,h.tx,h.ty,dt);
+
+    // 到達後AI復帰
+    if(dist(h,h.tx,h.ty)<0.05){
+      h.phase='AI';
+    }
+
+    // MAD探知
+    if(h.mission==='MAD'){
+      let d = dist(h,submarine.x,submarine.y);
+      if(d<0.025){
+        madContacts.push({x:submarine.x,y:submarine.y,life:60});
+        h.madTrack=true;
+        h.mx=submarine.x;
+        h.my=submarine.y;
       }
     }
 
-    const dx = hs.targetXNm - hs.xNm;
-    const dy = hs.targetYNm - hs.yNm;
-    const dist = Math.hypot(dx, dy);
-    if (dist > 0.002) {
-      const desired = Math.atan2(dy, dx);
-      const turnRate = 2.6 * dtReal;
-      const diff = wrapHeading(desired - hs.heading);
-      hs.heading += clamp(diff, -turnRate, turnRate);
-
-      const nmPerSecond = 2 / 60; // 2nm in about 60sec across field
-      const step = nmPerSecond * dtReal * (0.88 + 0.12 * Math.sin(state.simSeconds * 0.8 + hs.id));
-      hs.xNm += Math.cos(hs.heading) * Math.min(step, dist);
-      hs.yNm += Math.sin(hs.heading) * Math.min(step, dist);
-
-      hs.xNm = clamp(hs.xNm, 0.02, SEA_NM - 0.02);
-      hs.yNm = clamp(hs.yNm, 0.02, SEA_NM - 0.02);
-      if (hs.status !== 'DEPLOY') hs.status = 'TRANSIT';
-    } else if (hs.actionCooldown <= 0) {
-      hs.status = 'SEARCH';
-    }
-
-    if (hs.contactCooldown > 0) hs.contactCooldown -= dtReal;
-  }
-
-  function updateSubmarine(dtReal, dtSim) {
-    if (!submarine.alive) return;
-
-    submarine.lastTurnTimer += dtSim;
-    if (submarine.evadeTimer > 0) {
-      submarine.evadeTimer -= dtSim;
-    } else if (submarine.lastTurnTimer > 18 + Math.random() * 20) {
-      submarine.lastTurnTimer = 0;
-      submarine.heading += (-0.6 + Math.random() * 1.2);
-    }
-
-    // Avoid buoys a bit
-    for (const buoy of state.buoys) {
-      const d = distNm(submarine.xNm, submarine.yNm, buoy.xNm, buoy.yNm);
-      if (d < buoy.rangeNm * 1.45) {
-        const away = Math.atan2(submarine.yNm - buoy.yNm, submarine.xNm - buoy.xNm);
-        submarine.heading += wrapHeading(away - submarine.heading) * 0.06;
-      }
-    }
-
-    // If tracked recently, evade harder
-    if (state.contact && state.simSeconds - state.contact.lastUpdate < 18) {
-      submarine.evadeTimer = 8;
-      const away = Math.atan2(submarine.yNm - state.contact.yNm, submarine.xNm - state.contact.xNm);
-      submarine.heading += wrapHeading(away - submarine.heading) * 0.08;
-      submarine.speedKts = 9.2;
-    } else {
-      submarine.speedKts += (6.3 - submarine.speedKts) * 0.04;
-    }
-
-    const nmPerHour = submarine.speedKts;
-    const nmPerSecond = nmPerHour / 3600;
-    submarine.xNm += Math.cos(submarine.heading) * nmPerSecond * dtSim;
-    submarine.yNm += Math.sin(submarine.heading) * nmPerSecond * dtSim;
-
-    // Bounce at boundaries
-    if (submarine.xNm < 0.03 || submarine.xNm > SEA_NM - 0.03) {
-      submarine.heading = Math.PI - submarine.heading;
-      submarine.xNm = clamp(submarine.xNm, 0.03, SEA_NM - 0.03);
-    }
-    if (submarine.yNm < 0.03 || submarine.yNm > SEA_NM - 0.03) {
-      submarine.heading = -submarine.heading;
-      submarine.yNm = clamp(submarine.yNm, 0.03, SEA_NM - 0.03);
-    }
-  }
-
-  function updateBuoys(dtReal, dtSim) {
-    for (let i = state.buoys.length - 1; i >= 0; i--) {
-      const buoy = state.buoys[i];
-      buoy.ttl -= dtSim;
-      buoy.pulse += dtReal;
-      if (buoy.ttl <= 0) {
-        state.buoys.splice(i, 1);
-        log(`ソノブイ #${i + 1} 監視終了。`);
-      }
-    }
-  }
-
-  function updateRipples(dtReal) {
-    for (let i = state.ripples.length - 1; i >= 0; i--) {
-      const r = state.ripples[i];
-      r.t += dtReal;
-      if (r.t >= r.life) state.ripples.splice(i, 1);
-    }
-  }
-
-  function updateContact(dtReal, dtSim) {
-    let hit = null;
-    for (const buoy of state.buoys) {
-      const d = distNm(submarine.xNm, submarine.yNm, buoy.xNm, buoy.yNm);
-      const effectiveRange = buoy.rangeNm * (0.86 + submarine.noise * 0.34);
-      if (d <= effectiveRange) {
-        hit = buoy;
-        break;
-      }
-    }
-
-    if (hit) {
-      const error = 0.03 + Math.random() * 0.05;
-      const noisyX = clamp(submarine.xNm + (Math.random() - 0.5) * error, 0, SEA_NM);
-      const noisyY = clamp(submarine.yNm + (Math.random() - 0.5) * error, 0, SEA_NM);
-
-      if (!state.contact || state.simSeconds - state.contact.lastUpdate > 3.0) {
-        state.contact = {
-          xNm: noisyX,
-          yNm: noisyY,
-          radiusNm: 0.18,
-          lastUpdate: state.simSeconds,
-          sensor: 'SONOBUOY',
-        };
-        state.ripples.push({ xNm: noisyX, yNm: noisyY, t: 0, life: 1.4, color: '255,220,100' });
-        log(`CONTACT UPDATE: ソノブイ反応。推定位置 ${noisyX.toFixed(2)}, ${noisyY.toFixed(2)}`);
-      } else {
-        state.contact.xNm += (noisyX - state.contact.xNm) * 0.22;
-        state.contact.yNm += (noisyY - state.contact.yNm) * 0.22;
-        state.contact.radiusNm = Math.max(0.10, state.contact.radiusNm - 0.004 * dtSim);
-        state.contact.lastUpdate = state.simSeconds;
-      }
-    } else if (state.contact) {
-      const age = state.simSeconds - state.contact.lastUpdate;
-      state.contact.radiusNm = Math.min(0.42, state.contact.radiusNm + 0.010 * dtSim);
-      if (age > 24) {
-        log(`CONTACT LOST: 推定海域拡散。`);
-        state.contact = null;
-      }
-    }
-  }
-
-  function update(dtReal) {
-    const timeScale = timeScales[timeScaleIndex];
-    const dtSim = dtReal * timeScale;
-    state.simSeconds += dtSim;
-    state.wavePhase += dtReal * 0.6;
-
-    helicopters.forEach(h => updateHelicopter(h, dtReal, dtSim));
-    updateSubmarine(dtReal, dtSim);
-    updateBuoys(dtReal, dtSim);
-    updateRipples(dtReal);
-    updateContact(dtReal, dtSim);
-  }
-
-  function drawSea() {
-    const w = state.width;
-    const h = state.height;
-
-    ctx.clearRect(0, 0, w, h);
-
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#0f4868');
-    grad.addColorStop(1, '#082638');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-
-    // Wave bands
-    for (let row = 0; row < 28; row++) {
-      const y = (row / 28) * h;
-      ctx.beginPath();
-      for (let x = 0; x <= w; x += 12) {
-        const n = Math.sin(x * 0.012 + state.wavePhase * 1.8 + row * 0.6) * 5
-                + Math.sin(x * 0.025 - state.wavePhase * 1.1 + row * 0.2) * 2;
-        const yy = y + n;
-        if (x === 0) ctx.moveTo(x, yy);
-        else ctx.lineTo(x, yy);
-      }
-      ctx.strokeStyle = `rgba(160, 220, 255, ${0.03 + (row % 3) * 0.015})`;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-
-    // subtle moving highlights
-    for (let i = 0; i < 18; i++) {
-      const px = ((i * 117 + state.wavePhase * 45) % (w + 120)) - 60;
-      const py = (i * 53) % h;
-      ctx.fillStyle = 'rgba(255,255,255,0.025)';
-      ctx.fillRect(px, py, 50, 2);
-    }
-  }
-
-  function drawBuoys() {
-    for (const buoy of state.buoys) {
-      const x = nmToPxX(buoy.xNm);
-      const y = nmToPxY(buoy.yNm);
-      const r = buoy.rangeNm / SEA_NM * state.width;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(115, 255, 140, ${0.22 + 0.06 * Math.sin(buoy.pulse * 3)})`;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#baffc8';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-  }
-
-  function drawContact() {
-    if (!state.contact) return;
-    const x = nmToPxX(state.contact.xNm);
-    const y = nmToPxY(state.contact.yNm);
-    const r = state.contact.radiusNm / SEA_NM * state.width;
-
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 205, 80, 0.08)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 220, 100, 0.65)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([7, 5]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.beginPath();
-    ctx.arc(x, y, 6 + 2 * Math.sin(state.wavePhase * 5), 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255, 220, 100, 0.85)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-
-  function drawRipples() {
-    for (const r of state.ripples) {
-      const x = nmToPxX(r.xNm);
-      const y = nmToPxY(r.yNm);
-      const p = r.t / r.life;
-      const rad = 6 + p * 32;
-      const alpha = 1 - p;
-      ctx.beginPath();
-      ctx.arc(x, y, rad, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${r.color}, ${0.8 * alpha})`;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-  }
-
-  function drawHelicopter(hs) {
-    const x = nmToPxX(hs.xNm);
-    const y = nmToPxY(hs.yNm);
-    const size = state.height * HS_SIZE_RATIO;
-    const rotorR = size * 0.45;
-
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(hs.heading + Math.PI / 2);
-
-    // target line
-    if (hs.selected) {
-      const tx = nmToPxX(hs.targetXNm) - x;
-      const ty = nmToPxY(hs.targetYNm) - y;
-      ctx.save();
-      ctx.rotate(-(hs.heading + Math.PI / 2));
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(tx, ty);
-      ctx.strokeStyle = 'rgba(210,240,255,0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 5]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
-
-    // selection ring
-    if (hs.selected) {
-      ctx.beginPath();
-      ctx.arc(0, 0, size * 0.62, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(119, 231, 255, 0.95)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-
-    // rotor disk
-    ctx.beginPath();
-    ctx.arc(0, 0, rotorR, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(220,240,255,0.06)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(220,240,255,0.16)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // spinning blur
-    ctx.save();
-    ctx.rotate(hs.rotor);
-    for (let i = 0; i < 4; i++) {
-      ctx.rotate(Math.PI / 2);
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(0, -rotorR);
-      ctx.strokeStyle = 'rgba(220, 240, 255, 0.55)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // tail
-    ctx.beginPath();
-    ctx.moveTo(0, size * 0.08);
-    ctx.lineTo(0, size * 0.66);
-    ctx.strokeStyle = '#d7e3ea';
-    ctx.lineWidth = Math.max(2, size * 0.08);
-    ctx.stroke();
-
-    // fuselage
-    ctx.beginPath();
-    ctx.ellipse(0, -size * 0.05, size * 0.18, size * 0.32, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#d7e3ea';
-    ctx.fill();
-    ctx.strokeStyle = '#26333a';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // nose
-    ctx.beginPath();
-    ctx.moveTo(0, -size * 0.48);
-    ctx.lineTo(size * 0.10, -size * 0.20);
-    ctx.lineTo(-size * 0.10, -size * 0.20);
-    ctx.closePath();
-    ctx.fillStyle = '#d7e3ea';
-    ctx.fill();
-
-    // sponson-ish
-    ctx.fillStyle = '#9fb2bc';
-    ctx.fillRect(-size * 0.22, -size * 0.12, size * 0.12, size * 0.18);
-    ctx.fillRect(size * 0.10, -size * 0.12, size * 0.12, size * 0.18);
-
-    // state light
-    const lightColor =
-      hs.status === 'DEPLOY' ? '#ffd166' :
-      hs.status === 'TRANSIT' ? '#9fe8ff' : '#9eff9e';
-    ctx.beginPath();
-    ctx.arc(0, size * 0.10, size * 0.08, 0, Math.PI * 2);
-    ctx.fillStyle = lightColor;
-    ctx.fill();
-
-    // label
-    ctx.rotate(-(hs.heading + Math.PI / 2));
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(hs.callsign, 0, size * 0.95);
-
-    ctx.restore();
-  }
-
-  function drawSubDebug() {
-    if (!state.hiddenSubVisibleForDebug) return;
-    const x = nmToPxX(submarine.xNm);
-    const y = nmToPxY(submarine.yNm);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(submarine.heading + Math.PI / 2);
-    ctx.fillStyle = 'rgba(255,0,0,0.55)';
-    ctx.beginPath();
-    ctx.moveTo(0, -10);
-    ctx.lineTo(6, 6);
-    ctx.lineTo(-6, 6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawOverlayText() {
-    ctx.fillStyle = 'rgba(255,255,255,0.88)';
-    ctx.font = '14px sans-serif';
-    ctx.fillText('Tap sea to move selected HS', 14, 24);
-    ctx.fillText('Use right panel to deploy sonobuoy', 14, 44);
-  }
-
-  function render() {
-    drawSea();
-    drawBuoys();
-    drawContact();
-    drawRipples();
-    helicopters.forEach(drawHelicopter);
-    drawSubDebug();
-    drawOverlayText();
-  }
-
-  function tick(ts) {
-    if (!state.lastTimestamp) state.lastTimestamp = ts;
-    const dtReal = Math.min(0.05, (ts - state.lastTimestamp) / 1000);
-    state.lastTimestamp = ts;
-
-    update(dtReal);
-    render();
-    updatePanel();
-
-    requestAnimationFrame(tick);
-  }
-
-  function onPointerDown(ev) {
-    commandMoveSeaTap(ev.clientX, ev.clientY);
-  }
-
-  canvas.addEventListener('pointerdown', onPointerDown);
-  deployBuoyBtn.addEventListener('click', deployBuoyFromSelected);
-  cycleSpeedBtn.addEventListener('click', () => {
-    timeScaleIndex = (timeScaleIndex + 1) % timeScales.length;
-    log(`時間加速 ${timeScales[timeScaleIndex]}×`);
-    updatePanel();
   });
 
-  window.addEventListener('resize', resize);
-
-  window.addEventListener('keydown', (ev) => {
-    if (ev.key === '1') setSelectedHs(0);
-    if (ev.key === '2') setSelectedHs(1);
-    if (ev.key === '3') setSelectedHs(2);
-    if (ev.key.toLowerCase() === 'b') deployBuoyFromSelected();
-    if (ev.key.toLowerCase() === 't') {
-      timeScaleIndex = (timeScaleIndex + 1) % timeScales.length;
-      log(`時間加速 ${timeScales[timeScaleIndex]}×`);
-    }
-    if (ev.key.toLowerCase() === 'd') {
-      state.hiddenSubVisibleForDebug = !state.hiddenSubVisibleForDebug;
-      log(`DEBUG submarine ${state.hiddenSubVisibleForDebug ? 'ON' : 'OFF'}`);
-    }
+  // ソノブイ更新
+  buoys.forEach(b=>{
+    b.life-=dt;
   });
 
-  resize();
-  renderHsList();
-  updateSelectedInfo();
-  log('SYSTEM READY: HS 3機 管制開始。');
-  log('海面をタップすると選択中HSが移動。');
-  log('右パネルからソノブイ投下可能。');
-  requestAnimationFrame(tick);
-})();
+  madContacts.forEach(m=>m.life-=dt);
+
+  buoys = buoys.filter(b=>b.life>0);
+  madContacts = madContacts.filter(m=>m.life>0);
+}
+
+function move(h,x,y,dt){
+  let dx=x-h.x;
+  let dy=y-h.y;
+  let d=Math.hypot(dx,dy);
+  if(d>0.001){
+    h.x+=dx/d*h.speed*dt;
+    h.y+=dy/d*h.speed*dt;
+  }
+}
+
+function dist(h,x,y){
+  return Math.hypot(h.x-x,h.y-y);
+}
+
+function draw(){
+
+  ctx.fillStyle="#082635";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // 潜水艦（デバッグ）
+  ctx.fillStyle="red";
+  drawCircle(submarine.x,submarine.y,4);
+
+  // ソノブイ
+  ctx.strokeStyle="lime";
+  buoys.forEach(b=>{
+    drawCircle(b.x,b.y,20);
+  });
+
+  // MAD
+  madContacts.forEach(m=>{
+    let x=nmX(m.x), y=nmY(m.y);
+    ctx.strokeStyle="yellow";
+    ctx.beginPath();
+    ctx.arc(x,y,10,0,Math.PI*2);
+    ctx.stroke();
+    ctx.fillText("M",x,y);
+  });
+
+  // HS
+  helicopters.forEach(h=>{
+    ctx.fillStyle = (h===selected)?"cyan":"white";
+    drawCircle(h.x,h.y,6);
+  });
+
+}
+
+function nmX(x){ return x/SEA_NM*canvas.width; }
+function nmY(y){ return y/SEA_NM*canvas.height; }
+
+function drawCircle(x,y,r){
+  ctx.beginPath();
+  ctx.arc(nmX(x),nmY(y),r,0,Math.PI*2);
+  ctx.fill();
+}
+
+let last=0;
+function loop(t){
+  let dt=(t-last)/1000;
+  last=t;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+
 </script>
 </body>
 </html>
