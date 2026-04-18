@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>JLab USW Simulator v1.4.7 Complete</title>
+<title>JLab USW Simulator v1.4.8 Complete</title>
 <style>
   :root{
     --panel-bg:#050505;
@@ -15,10 +15,18 @@
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{
-    margin:0;width:100%;height:100%;overflow:hidden;background:#000;
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#000;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   }
-  #app{display:flex;width:100vw;height:100vh}
+  #app{
+    display:flex;
+    width:100vw;
+    height:100vh;
+  }
   #seaWrap{
     position:relative;
     width:80vw;
@@ -129,16 +137,19 @@
       0 0 10px rgba(60,255,114,0.22);
   }
   #logSection{
-    margin-top:auto;
+    flex:1 1 auto;
+    margin-top:0;
     margin-bottom:0;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
   }
   .log{
     font-size:11px;
-    line-height:1.2;
-    min-height:14px;
-    white-space:nowrap;
+    line-height:1.28;
+    white-space:pre-wrap;
     overflow:hidden;
-    text-overflow:ellipsis;
+    flex:1 1 auto;
   }
 </style>
 </head>
@@ -168,6 +179,7 @@
 
     <div class="section">
       <h3>CONTACT CONDITION</h3>
+      <div class="small">COS／SPD</div>
       <div id="contactConditionInfo" class="small">NO CONTACT</div>
       <div class="btnRow">
         <button id="attackBtn" class="attack" disabled>ATTACK</button>
@@ -215,6 +227,10 @@
   const TORPEDO_SEEK_RANGE_NM = 0.090;
   const TORPEDO_HIT_RANGE_NM = 0.018;
 
+  const SNR_GATE_ALT_FT = 150;
+  const SNR_HOVER_ALT_FT = 70;
+  const SNR_EXIT_ALT_FT = 150;
+
   const state = {
     width: 1,
     height: 1,
@@ -225,9 +241,6 @@
     buoys: [],
     madContacts: [],
     contact: null,
-    lastContactTime: null,
-    lastContactSensor: null,
-    lastContactRadius: null,
     lastDetectionTime: 0,
     whitecapSeedCount: 0,
     plannedPoint: null,
@@ -270,7 +283,6 @@
       mission: 'RADAR',
       phase: 'AI',
       speed: HS_MAX_SPEED,
-      rotorPhase: Math.random() * Math.PI * 2,
       flashTimer: 0,
 
       fuel: FUEL_START_LBS,
@@ -316,7 +328,7 @@
     const targets = [];
 
     const thermalCount = 3 + Math.floor(Math.random() * 3);
-    for(let i=0;i<thermalCount;i++){
+    for(let i = 0; i < thermalCount; i++){
       targets.push({
         type:'THERMAL',
         x: 0.12 + Math.random() * 1.76,
@@ -341,7 +353,7 @@
     }
 
     const wreckCount = Math.floor(Math.random() * 4);
-    for(let i=0;i<wreckCount;i++){
+    for(let i = 0; i < wreckCount; i++){
       targets.push({
         type:'WRECK',
         x: 0.12 + Math.random() * 1.76,
@@ -369,6 +381,11 @@
   function degToRad(deg){ return deg * Math.PI / 180; }
   function radToDeg(rad){ return rad * 180 / Math.PI; }
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+  function lerp(a, b, t){ return a + (b - a) * t; }
+  function invLerp(a, b, v){
+    if(Math.abs(b - a) < 0.000001) return 0;
+    return clamp((v - a) / (b - a), 0, 1);
+  }
   function wrapHeading(a){
     while(a < -Math.PI) a += Math.PI * 2;
     while(a > Math.PI) a -= Math.PI * 2;
@@ -378,15 +395,15 @@
   function nmX(x){ return x / SEA_NM * state.width; }
   function nmY(y){ return y / SEA_NM * state.height; }
 
-  function compassToCanvasRad(deg){
-    return degToRad(90 - deg);
-  }
-
   function canvasRadToCompassDeg(rad){
     let deg = 90 - radToDeg(rad);
     while(deg < 0) deg += 360;
     while(deg >= 360) deg -= 360;
     return Math.round(deg / 5) * 5 % 360;
+  }
+
+  function compassToCanvasRad(deg){
+    return degToRad(90 - deg);
   }
 
   function compassVector(deg){
@@ -401,10 +418,45 @@
     return Math.max(0, Math.floor(v / 10) * 10);
   }
 
+  function resize(){
+    const rect = seaWrap.getBoundingClientRect();
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    state.width = rect.width;
+    state.height = rect.height;
+    state.whitecapSeedCount = Math.max(90, Math.floor(state.width * state.height / 11000));
+  }
+
+  function nowStamp() {
+    const min = Math.floor(state.simTime / 60);
+    const sec = Math.floor(state.simTime % 60);
+    return `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  }
+
+  function addLog(msg){
+    state.logs.unshift(`[${nowStamp()}] ${msg}`);
+    state.logs = state.logs.slice(0, 40);
+    logEl.textContent = state.logs.join('\n');
+  }
+
+  function windLineText(deg){
+    const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+    const idx = Math.round((((deg % 360) + 360) % 360) / 22.5) % 16;
+    return `${deg}° / ${dirs[idx]}`;
+  }
+
+  function missionAltitudeText(h){
+    const alt = Math.round(h.altitude / 10) * 10;
+    return `${alt} FT`;
+  }
+
   function updateFalseTargets(dt){
     for(const t of falseTargets){
-      if(t.destroyed) continue;
-      if(t.type !== 'WHALE') continue;
+      if(t.destroyed || t.type !== 'WHALE') continue;
 
       t.turnTimer -= dt;
       if(t.turnTimer <= 0){
@@ -437,15 +489,12 @@
 
     for(const c of getAllContacts()){
       let detectable = false;
-      if(sensorType === 'SNR'){
-        detectable = true;
-      } else if(sensorType === 'SONO'){
-        detectable = c.type === 'SUB';
-      } else if(sensorType === 'MAD'){
-        detectable = c.type === 'SUB' || c.type === 'WRECK';
-      }
+      if(sensorType === 'SNR') detectable = true;
+      else if(sensorType === 'SONO') detectable = c.type === 'SUB';
+      else if(sensorType === 'MAD') detectable = c.type === 'SUB' || c.type === 'WRECK';
 
       if(!detectable) continue;
+
       const d = dist(x, y, c.x, c.y);
       if(d <= rangeNm && d < bestD){
         best = c;
@@ -454,43 +503,6 @@
     }
 
     return best ? { contact: best, distance: bestD } : null;
-  }
-
-  function resize(){
-    const rect = seaWrap.getBoundingClientRect();
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    canvas.width = Math.floor(rect.width * dpr);
-    canvas.height = Math.floor(rect.height * dpr);
-    canvas.style.width = rect.width + 'px';
-    canvas.style.height = rect.height + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    state.width = rect.width;
-    state.height = rect.height;
-    state.whitecapSeedCount = Math.max(90, Math.floor(state.width * state.height / 11000));
-  }
-
-  function nowStamp() {
-    const min = Math.floor(state.simTime / 60);
-    const sec = Math.floor(state.simTime % 60);
-    return `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
-  }
-
-  function addLog(msg){
-    state.logs.unshift(`[${nowStamp()}] ${msg}`);
-    state.logs = state.logs.slice(0, 45);
-    logEl.textContent = state.logs[0] || '';
-  }
-
-  function windLineText(deg){
-    const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-    const idx = Math.round((((deg % 360) + 360) % 360) / 22.5) % 16;
-    return `${deg}° / ${dirs[idx]}`;
-  }
-
-  function missionAltitudeText(h){
-    if(h.mission === 'SNR') return '70 FT';
-    if(h.mission === 'MAD') return '400 FT';
-    return '1000 FT';
   }
 
   function setSelected(h){
@@ -507,7 +519,6 @@
       track = {
         id: ++state.trackSeq,
         target,
-        type: target.type,
         sensor,
         x: estX,
         y: estY,
@@ -542,7 +553,7 @@
   function formatTrackCondition(track){
     const hdg = String(track.displayHeadingDeg).padStart(3,'0');
     const spd = Math.max(0, Math.round(track.displaySpeedKt));
-    return `${track.type}  COS ${hdg}° / SPD ${spd}KT`;
+    return `${hdg}° / ${spd}KT`;
   }
 
   function updateUI(){
@@ -588,11 +599,8 @@
     missionSonoBtn.classList.remove('activeMission');
     missionMadBtn.classList.remove('activeMission');
 
-    if(state.selected && state.selected.mission === 'SONO'){
-      missionSonoBtn.textContent = 'LAUNCH';
-    } else {
-      missionSonoBtn.textContent = 'SONO';
-    }
+    if(state.selected && state.selected.mission === 'SONO') missionSonoBtn.textContent = 'LAUNCH';
+    else missionSonoBtn.textContent = 'SONO';
 
     if(state.selected){
       if(state.selected.mission === 'SNR') missionSnrBtn.classList.add('activeMission');
@@ -601,11 +609,7 @@
     }
 
     const displayedTrack = getDisplayedTrack();
-    if(displayedTrack){
-      contactConditionInfoEl.textContent = formatTrackCondition(displayedTrack);
-    } else {
-      contactConditionInfoEl.textContent = 'NO CONTACT';
-    }
+    contactConditionInfoEl.textContent = displayedTrack ? formatTrackCondition(displayedTrack) : 'NO CONTACT';
 
     const attackAllowed =
       !!state.selected &&
@@ -622,6 +626,20 @@
     attackBtn.disabled = !attackAllowed;
   }
 
+  function resetSnrState(h){
+    h.snrState = 'NONE';
+    h.snrWaitTimer = 0;
+    h.snrPulseTimer = 0;
+    h.snrPulseAge = 99;
+    h.snrContact = null;
+    h.snrNextTask = null;
+    h.gateX = null;
+    h.gateY = null;
+    h.finalX = null;
+    h.finalY = null;
+    h.speed = HS_MAX_SPEED;
+  }
+
   function setMission(mission){
     if(!state.selected){
       addLog('NO AIRCRAFT SELECTED');
@@ -635,26 +653,24 @@
     }
 
     const prevMission = h.mission;
+
+    if(prevMission === 'SNR' && mission !== 'SNR'){
+      resetSnrState(h);
+    }
+
     h.mission = mission;
+    h.madTrack = false;
 
     if(mission === 'SNR'){
-      h.desiredAltitude = 150;
+      h.desiredAltitude = SNR_GATE_ALT_FT;
       h.phase = 'MANUAL';
-      h.snrState = 'NONE';
-      h.snrNextTask = null;
-      h.madTrack = false;
+      resetSnrState(h);
     } else if(mission === 'SONO'){
       h.desiredAltitude = 1000;
       h.phase = 'MANUAL';
-      h.snrState = 'NONE';
-      h.snrNextTask = null;
-      h.madTrack = false;
     } else if(mission === 'MAD'){
       h.desiredAltitude = 400;
       h.phase = 'MANUAL';
-      h.snrState = 'NONE';
-      h.snrNextTask = null;
-      h.madTrack = false;
     }
 
     if(mission === 'MAD' && prevMission !== 'MAD'){
@@ -747,7 +763,6 @@
     const py = e.clientY - rect.top;
 
     const SELECT_RADIUS = 22;
-
     let nearest = null;
     let minDist = Infinity;
 
@@ -763,11 +778,8 @@
     }
 
     if(nearest && minDist <= SELECT_RADIUS){
-      if(nearest === state.selected){
-        nearest.flashTimer = 0.18;
-      } else {
-        setSelected(nearest);
-      }
+      if(nearest === state.selected) nearest.flashTimer = 0.18;
+      else setSelected(nearest);
       return;
     }
 
@@ -816,8 +828,9 @@
       h.snrNextTask = null;
       h.snrState = 'APPROACH';
       h.phase = 'MANUAL';
-      h.desiredAltitude = 150;
+      h.desiredAltitude = SNR_GATE_ALT_FT;
       h.madTrack = false;
+      h.speed = HS_MAX_SPEED;
       addLog(`HS-${h.id+1} SNR approach -> (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
       return;
     }
@@ -844,7 +857,7 @@
     addLog(`HS-${h.id+1} no mission selected for sea command`);
   }, { passive:false });
 
-  function moveToward(h, tx, ty, dt, speedScale=1.0, turnRate=2.0){
+  function moveToward(h, tx, ty, dt, speedScale = 1.0, turnRate = 2.0){
     const dx = tx - h.x;
     const dy = ty - h.y;
     const d = Math.hypot(dx, dy);
@@ -871,6 +884,7 @@
         h.y = h.respawnY;
         h.tx = clamp(h.respawnX - 0.08, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
         h.ty = clamp(h.respawnY - 0.08, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
+        h.speed = HS_MAX_SPEED;
         addLog(`HS-${h.id+1} returned from mother ship`);
       }
       return;
@@ -882,9 +896,8 @@
       h.fuelState = 'LOW';
       h.phase = 'RTB';
       h.madTrack = false;
-      h.snrState = 'NONE';
-      h.snrNextTask = null;
       h.madDeployTarget = 0;
+      resetSnrState(h);
 
       const left = h.x;
       const right = SEA_NM - h.x;
@@ -985,13 +998,11 @@
     updateFuelAndRecovery(h, dt);
     if(h.fuelState === 'OFFSCREEN') return;
 
-    h.rotorPhase += 20 * dt;
-    if(h.flashTimer > 0) h.flashTimer = Math.max(0, h.flashTimer - dt);
-    h.altitude += (h.desiredAltitude - h.altitude) * Math.min(1, dt * 1.8);
-
     if(h.madDetectCooldown > 0){
       h.madDetectCooldown = Math.max(0, h.madDetectCooldown - dt);
     }
+
+    h.altitude += (h.desiredAltitude - h.altitude) * Math.min(1, dt * 1.8);
 
     if(h.madDeploy !== h.madDeployTarget){
       const dir = h.madDeployTarget > h.madDeploy ? 1 : -1;
@@ -1003,6 +1014,7 @@
 
     if(h.phase === 'RTB'){
       h.desiredAltitude = 1000;
+      h.speed = HS_MAX_SPEED;
       moveToward(h, h.exitX, h.exitY, dt, 1.15, 1.8);
       if(h.x < -0.16 || h.x > SEA_NM + 0.16 || h.y < -0.16 || h.y > SEA_NM + 0.16){
         h.fuelState = 'OFFSCREEN';
@@ -1022,10 +1034,12 @@
       if(h.madTrackTimer <= 0) h.madTrack = false;
     }
 
-    if(h.mission === 'SNR' || h.snrState !== 'NONE'){
+    if(h.snrState !== 'NONE'){
       if(h.snrState === 'APPROACH'){
+        h.speed = HS_MAX_SPEED;
+        h.desiredAltitude = SNR_GATE_ALT_FT;
+
         moveToward(h, h.gateX, h.gateY, dt, 0.9, 1.2);
-        h.desiredAltitude = 150;
 
         const dg = dist(h.x, h.y, h.gateX, h.gateY);
         const diff = wrapHeading(h.snrApproachHeading - h.heading);
@@ -1039,9 +1053,15 @@
       }
 
       if(h.snrState === 'DESCEND'){
+        h.speed = HS_MAX_SPEED;
+
         const dx = h.finalX - h.x;
         const dy = h.finalY - h.y;
         const d = Math.hypot(dx, dy);
+
+        const totalLeg = Math.max(0.0001, dist(h.gateX, h.gateY, h.finalX, h.finalY));
+        const remainRatio = clamp(d / totalLeg, 0, 1);
+        const progress = 1 - remainRatio;
 
         if(d > 0.0001){
           const step = h.speed * 0.38 * dt;
@@ -1050,11 +1070,12 @@
         }
 
         h.heading = h.snrApproachHeading;
-        h.desiredAltitude = 70;
+        h.desiredAltitude = lerp(SNR_GATE_ALT_FT, SNR_HOVER_ALT_FT, progress);
 
-        if(dist(h.x, h.y, h.finalX, h.finalY) < 0.008 && Math.abs(h.altitude - 70) < 8){
+        if(dist(h.x, h.y, h.finalX, h.finalY) < 0.008 && Math.abs(h.altitude - SNR_HOVER_ALT_FT) < 8){
           h.x = h.finalX;
           h.y = h.finalY;
+          h.desiredAltitude = SNR_HOVER_ALT_FT;
           h.snrState = 'HOVER_WAIT';
           h.snrWaitTimer = 5;
         }
@@ -1062,12 +1083,12 @@
       }
 
       if(h.snrState === 'HOVER_WAIT'){
-        h.desiredAltitude = 70;
+        h.desiredAltitude = SNR_HOVER_ALT_FT;
         h.heading = h.snrApproachHeading;
         h.x = h.finalX;
         h.y = h.finalY;
-        h.speed = 0;
         h.snrWaitTimer -= dt;
+
         if(h.snrWaitTimer <= 0){
           h.snrState = 'ACTIVE';
           h.snrPulseTimer = 0;
@@ -1078,14 +1099,14 @@
       }
 
       if(h.snrState === 'ACTIVE'){
-        h.desiredAltitude = 70;
+        h.desiredAltitude = SNR_HOVER_ALT_FT;
         h.heading = h.snrApproachHeading;
         h.x = h.finalX;
         h.y = h.finalY;
-        h.speed = 0;
 
         h.snrPulseTimer += dt;
         h.snrPulseAge += dt;
+
         if(h.snrPulseTimer >= 5){
           h.snrPulseTimer = 0;
           h.snrPulseAge = 0;
@@ -1097,25 +1118,24 @@
 
           const maxR = getSnrRangeNm();
           const snrHit = findNearestDetectableContact(h.x, h.y, maxR, 'SNR');
+
           if(snrHit){
             const target = snrHit.contact;
             const d = snrHit.distance;
             const trueBearing = Math.atan2(target.y - h.y, target.x - h.x);
-            const noisyBearing = trueBearing + (-0.10 + Math.random()*0.20) * 0.45;
-            const noisyRange = d * (1 + (-0.10 + Math.random()*0.20));
+            const noisyBearing = trueBearing + (-0.10 + Math.random() * 0.20) * 0.45;
+            const noisyRange = d * (1 + (-0.10 + Math.random() * 0.20));
             const cx = clamp(h.x + Math.cos(noisyBearing) * noisyRange, 0, SEA_NM);
             const cy = clamp(h.y + Math.sin(noisyBearing) * noisyRange, 0, SEA_NM);
 
             let lineStyle = 'solid';
             if(d >= maxR * 0.7) lineStyle = 'dash';
+
             if(d >= maxR * 0.8 && Math.random() < 0.55){
               h.snrContact = null;
             } else {
               h.snrContact = { x:cx, y:cy, ttl:5, age:0, lineStyle };
               state.contact = { x:cx, y:cy, radiusNm:0.035, sensor:'SNR' };
-              state.lastContactTime = nowStamp();
-              state.lastContactSensor = `SNR-${target.type}`;
-              state.lastContactRadius = '0.04 nm';
               if(target.type === 'SUB') state.lastDetectionTime = state.simTime;
               registerTrack(target, 'SNR', cx, cy);
             }
@@ -1138,11 +1158,15 @@
       }
 
       if(h.snrState === 'EXITING'){
-        h.desiredAltitude = 400;
-        const fx = h.x + Math.cos(h.heading) * 0.06;
-        const fy = h.y + Math.sin(h.heading) * 0.06;
-        moveToward(h, fx, fy, dt, 1.0, 2.0);
-        if(h.altitude > 320){
+        h.speed = HS_MAX_SPEED;
+        const exitTx = h.x + Math.cos(h.heading) * 0.06;
+        const exitTy = h.y + Math.sin(h.heading) * 0.06;
+        moveToward(h, exitTx, exitTy, dt, 1.0, 2.0);
+
+        const climbProgress = invLerp(SNR_HOVER_ALT_FT, SNR_EXIT_ALT_FT, h.altitude);
+        h.desiredAltitude = lerp(SNR_HOVER_ALT_FT, SNR_EXIT_ALT_FT, clamp(climbProgress + dt * 0.8, 0, 1));
+
+        if(h.altitude >= SNR_EXIT_ALT_FT - 8){
           if(h.snrNextTask){
             h.finalX = h.snrNextTask.finalX;
             h.finalY = h.snrNextTask.finalY;
@@ -1154,12 +1178,11 @@
             h.snrNextTask = null;
             h.snrState = 'APPROACH';
             h.phase = 'MANUAL';
-            h.desiredAltitude = 150;
-            h.speed = HS_MAX_SPEED;
+            h.desiredAltitude = SNR_GATE_ALT_FT;
           } else {
-            h.snrState = 'NONE';
+            resetSnrState(h);
             h.phase = 'AI';
-            h.speed = HS_MAX_SPEED;
+            h.desiredAltitude = SNR_GATE_ALT_FT;
           }
         }
         return;
@@ -1179,18 +1202,17 @@
     }
 
     if(h.phase === 'TRANSIT'){
+      h.speed = HS_MAX_SPEED;
       moveToward(h, h.tx, h.ty, dt, 1.0, (h.mission === 'MAD' || h.mission === 'SONO') ? 1.35 : 2.4);
       if(dist(h.x, h.y, h.tx, h.ty) < 0.03){
-        if(h.mission === 'SONO') h.phase = 'AI';
-        else if(h.mission === 'MAD') h.phase = 'AI';
-        else h.phase = 'IDLE';
+        h.phase = 'AI';
       }
       return;
     }
 
     if(h.phase === 'AI' || h.phase === 'IDLE' || h.mission === 'RADAR' || h.phase === 'MANUAL'){
-      if(h.mission === 'MAD') h.desiredAltitude = 400;
-      else h.desiredAltitude = 1000;
+      h.speed = HS_MAX_SPEED;
+      h.desiredAltitude = h.mission === 'MAD' ? 400 : 1000;
 
       const tooNearEdge = (
         h.x < SAFE_MARGIN_NM || h.x > SEA_NM - SAFE_MARGIN_NM ||
@@ -1294,6 +1316,7 @@
 
   function hitTarget(target){
     if(!target || target.destroyed) return;
+
     target.destroyed = true;
     triggerExplosion(target.x, target.y);
     addLog(`${target.type} HIT`);
@@ -1324,9 +1347,7 @@
         state.torpedo = null;
         return;
       }
-    }
-
-    else if(torp.mode === 'search'){
+    } else if(torp.mode === 'search'){
       torp.searchAngle += 1.7 * dt;
       torp.x = torp.centerX + Math.cos(torp.searchAngle) * torp.searchRadius;
       torp.y = torp.centerY + Math.sin(torp.searchAngle) * torp.searchRadius;
@@ -1335,9 +1356,7 @@
         torp.heading = Math.atan2(target.y - torp.y, target.x - torp.x);
         torp.mode = torp.willHit ? 'home' : 'miss_run';
       }
-    }
-
-    else if(torp.mode === 'home'){
+    } else if(torp.mode === 'home'){
       if(!target){
         state.torpedo = null;
         return;
@@ -1352,9 +1371,7 @@
         state.torpedo = null;
         return;
       }
-    }
-
-    else if(torp.mode === 'miss_run'){
+    } else if(torp.mode === 'miss_run'){
       torp.x += Math.cos(torp.heading) * torp.speed * dt;
       torp.y += Math.sin(torp.heading) * torp.speed * dt;
     }
@@ -1386,18 +1403,17 @@
       } else {
         const d = sonoHit.distance;
         const ratio = d / b.rangeNm;
+
         if(ratio >= b.lostThreshold){
           b.bearingLine = null;
-        } else {
-          if(!b.bearingLine || b.bearingTimer >= 2){
-            b.bearingTimer = 0;
-            const target = sonoHit.contact;
-            const trueBearing = Math.atan2(target.y - b.y, target.x - b.x);
-            b.bearingLine = {
-              bearing: trueBearing + degToRad(-10 + Math.random() * 20)
-            };
-            registerTrack(target, 'SONO', target.x, target.y);
-          }
+        } else if(!b.bearingLine || b.bearingTimer >= 2){
+          b.bearingTimer = 0;
+          const target = sonoHit.contact;
+          const trueBearing = Math.atan2(target.y - b.y, target.x - b.x);
+          b.bearingLine = {
+            bearing: trueBearing + degToRad(-10 + Math.random() * 20)
+          };
+          registerTrack(target, 'SONO', target.x, target.y);
         }
       }
 
@@ -1415,16 +1431,14 @@
       const denom = d1.x * d2.y - d1.y * d2.x;
 
       if(Math.abs(denom) > 0.0001){
-        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
         const t1 = (dx * d2.y - dy * d2.x) / denom;
         const ix = p1.x + d1.x * t1;
         const iy = p1.y + d1.y * t1;
 
         if(ix >= 0 && ix <= SEA_NM && iy >= 0 && iy <= SEA_NM){
           state.contact = {x:ix, y:iy, radiusNm:0.07, sensor:'SONO-FIX'};
-          state.lastContactTime = nowStamp();
-          state.lastContactSensor = 'SONO-FIX';
-          state.lastContactRadius = '0.07 nm';
           state.lastDetectionTime = state.simTime;
           registerTrack(submarine, 'SONO-FIX', ix, iy);
         }
@@ -1456,9 +1470,6 @@
         h.madOrbitRadius = 0.12;
 
         state.contact = {x:mx, y:my, radiusNm:0.08, sensor:'MAD'};
-        state.lastContactTime = nowStamp();
-        state.lastContactSensor = `MAD-${target.type}`;
-        state.lastContactRadius = '0.08 nm';
         if(target.type === 'SUB') state.lastDetectionTime = state.simTime;
         registerTrack(target, 'MAD', mx, my);
       }
@@ -1491,7 +1502,7 @@
     ctx.fillRect(0, 0, state.width, state.height);
 
     const tm = performance.now() * 0.00005;
-    for(let i=0;i<10;i++){
+    for(let i = 0; i < 10; i++){
       const px = ((i * 173 + tm * 900) % (state.width + 160)) - 80;
       const py = (i * 113) % state.height;
       ctx.fillStyle = "rgba(255,255,255,0.015)";
@@ -1567,7 +1578,7 @@
     const g1 = ctx.createRadialGradient(cx, cy, 0, cx, cy, r1);
     g1.addColorStop(0.0, `rgba(255,255,255,${coreA})`);
     g1.addColorStop(0.6, `rgba(255,255,255,${coreA * 0.6})`);
-    g1.addColorStop(1.0, `rgba(255,255,255,0)`);
+    g1.addColorStop(1.0, 'rgba(255,255,255,0)');
 
     ctx.beginPath();
     ctx.arc(cx, cy, r1, 0, Math.PI * 2);
@@ -1577,7 +1588,7 @@
     const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, r2);
     g2.addColorStop(0.0, `rgba(255,255,255,${outerA})`);
     g2.addColorStop(0.7, `rgba(255,255,255,${outerA * 0.5})`);
-    g2.addColorStop(1.0, `rgba(255,255,255,0)`);
+    g2.addColorStop(1.0, 'rgba(255,255,255,0)');
 
     ctx.beginPath();
     ctx.arc(cx, cy, r2, 0, Math.PI * 2);
@@ -1606,6 +1617,7 @@
       ctx.lineWidth = h.flashTimer > 0 ? 3 : 2;
       ctx.stroke();
     }
+
     if(h.flashTimer > 0){
       ctx.beginPath();
       ctx.arc(x, y, baseSize * 0.82, 0, Math.PI * 2);
@@ -1618,15 +1630,15 @@
     ctx.translate(x, y);
     ctx.rotate(h.heading + Math.PI / 2);
 
-    if(h.mission === "SNR" && (h.snrState === "HOVER_WAIT" || h.snrState === "ACTIVE")){
+    if(h.mission === 'SNR' && (h.snrState === 'HOVER_WAIT' || h.snrState === 'ACTIVE')){
       drawDownwashAt(0, 18, h.heading, baseSize);
     }
 
     ctx.beginPath();
     ctx.arc(0, 0, rotorR, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(220,240,255,0.05)";
+    ctx.fillStyle = 'rgba(220,240,255,0.05)';
     ctx.fill();
-    ctx.strokeStyle = "rgba(220,240,255,0.14)";
+    ctx.strokeStyle = 'rgba(220,240,255,0.14)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
@@ -1638,7 +1650,7 @@
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.lineTo(0, -rotorR);
-      ctx.strokeStyle = "rgba(220,240,255,0.55)";
+      ctx.strokeStyle = 'rgba(220,240,255,0.55)';
       ctx.lineWidth = 1.8;
       ctx.stroke();
     }
@@ -1646,7 +1658,7 @@
 
     ctx.beginPath();
     ctx.arc(0, 0, baseSize * 0.08, 0, Math.PI * 2);
-    ctx.fillStyle = "#8f9da7";
+    ctx.fillStyle = '#8f9da7';
     ctx.fill();
 
     ctx.beginPath();
@@ -1655,17 +1667,17 @@
     ctx.lineTo(baseSize * 0.045, baseSize * 0.78);
     ctx.lineTo(-baseSize * 0.045, baseSize * 0.78);
     ctx.closePath();
-    ctx.fillStyle = "#d7e3ea";
+    ctx.fillStyle = '#d7e3ea';
     ctx.fill();
-    ctx.strokeStyle = "#2b3940";
+    ctx.strokeStyle = '#2b3940';
     ctx.lineWidth = 1.1;
     ctx.stroke();
 
     ctx.beginPath();
     ctx.ellipse(0, -baseSize * 0.02, baseSize * 0.22, baseSize * 0.38, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "#d7e3ea";
+    ctx.fillStyle = '#d7e3ea';
     ctx.fill();
-    ctx.strokeStyle = "#2b3940";
+    ctx.strokeStyle = '#2b3940';
     ctx.lineWidth = 1.2;
     ctx.stroke();
 
@@ -1682,20 +1694,20 @@
       0, -baseSize * 0.60
     );
     ctx.closePath();
-    ctx.fillStyle = "#d7e3ea";
+    ctx.fillStyle = '#d7e3ea';
     ctx.fill();
-    ctx.strokeStyle = "#2b3940";
+    ctx.strokeStyle = '#2b3940';
     ctx.lineWidth = 1.0;
     ctx.stroke();
 
-    ctx.fillStyle = "#bcc9d1";
+    ctx.fillStyle = '#bcc9d1';
     ctx.fillRect(-baseSize * 0.09, -baseSize * 0.20, baseSize * 0.18, baseSize * 0.10);
 
-    ctx.fillStyle = "#aabac4";
+    ctx.fillStyle = '#aabac4';
     ctx.fillRect(-baseSize * 0.31, -baseSize * 0.10, baseSize * 0.14, baseSize * 0.22);
     ctx.fillRect(baseSize * 0.17, -baseSize * 0.10, baseSize * 0.14, baseSize * 0.22);
 
-    ctx.strokeStyle = "#1f2a30";
+    ctx.strokeStyle = '#1f2a30';
     ctx.lineWidth = 1.1;
     ctx.beginPath();
     ctx.moveTo(-baseSize * 0.19, baseSize * 0.02);
@@ -1707,10 +1719,10 @@
     ctx.beginPath();
     ctx.arc(-baseSize * 0.30, baseSize * 0.19, baseSize * 0.04, 0, Math.PI * 2);
     ctx.arc(baseSize * 0.30, baseSize * 0.19, baseSize * 0.04, 0, Math.PI * 2);
-    ctx.fillStyle = "#2d2d2d";
+    ctx.fillStyle = '#2d2d2d';
     ctx.fill();
 
-    ctx.fillStyle = "#c9d5dc";
+    ctx.fillStyle = '#c9d5dc';
     ctx.fillRect(-baseSize * 0.20, baseSize * 0.70, baseSize * 0.40, baseSize * 0.05);
 
     ctx.beginPath();
@@ -1719,10 +1731,10 @@
     ctx.lineTo(baseSize * 0.03, baseSize * 0.94);
     ctx.lineTo(-baseSize * 0.03, baseSize * 0.94);
     ctx.closePath();
-    ctx.fillStyle = "#d2dde4";
+    ctx.fillStyle = '#d2dde4';
     ctx.fill();
 
-    ctx.fillStyle = "#bfcbd3";
+    ctx.fillStyle = '#bfcbd3';
     ctx.fillRect(-baseSize * 0.08, baseSize * 0.91, baseSize * 0.16, baseSize * 0.04);
 
     ctx.save();
@@ -1733,7 +1745,7 @@
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.lineTo(0, -baseSize * 0.14);
-      ctx.strokeStyle = "rgba(220,240,255,0.75)";
+      ctx.strokeStyle = 'rgba(220,240,255,0.75)';
       ctx.lineWidth = 1.4;
       ctx.stroke();
     }
@@ -1746,7 +1758,7 @@
       ctx.beginPath();
       ctx.moveTo(0, baseSize * 0.98);
       ctx.lineTo(0, bodyY - baseSize * 0.10);
-      ctx.strokeStyle = "rgba(220,220,220,0.75)";
+      ctx.strokeStyle = 'rgba(220,220,220,0.75)';
       ctx.lineWidth = 1.1;
       ctx.stroke();
 
@@ -1755,22 +1767,22 @@
 
       ctx.save();
       ctx.translate(0, bodyY);
-      ctx.fillStyle = "#f2d14a";
+      ctx.fillStyle = '#f2d14a';
       ctx.fillRect(-bodyW/2, -bodyH/2, bodyW, bodyH);
-      ctx.fillStyle = "#ff4d4d";
+      ctx.fillStyle = '#ff4d4d';
       ctx.fillRect(-bodyW/2, -bodyH/2, bodyW/2, bodyH/2);
       ctx.fillRect(0, 0, bodyW/2, bodyH/2);
-      ctx.strokeStyle = "#222";
+      ctx.strokeStyle = '#222';
       ctx.lineWidth = 1;
       ctx.strokeRect(-bodyW/2, -bodyH/2, bodyW, bodyH);
       ctx.restore();
     }
 
-    let light = "#9eff9e";
-    if(h.mission === "MAD") light = "#ffe08a";
-    if(h.mission === "SNR") light = "#9fe8ff";
-    if(h.phase === "TRANSIT") light = "#c9f2ff";
-    if(h.fuelState === "LOW") light = "#ff7f7f";
+    let light = '#9eff9e';
+    if(h.mission === 'MAD') light = '#ffe08a';
+    if(h.mission === 'SNR') light = '#9fe8ff';
+    if(h.phase === 'TRANSIT') light = '#c9f2ff';
+    if(h.fuelState === 'LOW') light = '#ff7f7f';
 
     ctx.beginPath();
     ctx.arc(0, baseSize * 0.08, baseSize * 0.075, 0, Math.PI * 2);
@@ -1779,19 +1791,21 @@
 
     ctx.restore();
 
-    ctx.fillStyle = h.fuelState === 'LOW' ? "rgba(255,160,160,0.95)" : "rgba(255,255,255,0.90)";
-    ctx.font = "11px sans-serif";
-    ctx.textAlign = "center";
+    ctx.fillStyle = h.fuelState === 'LOW' ? 'rgba(255,160,160,0.95)' : 'rgba(255,255,255,0.90)';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
     ctx.fillText(`HS-${h.id + 1}`, x, y + baseSize * 1.05);
   }
 
   function drawSonoBearings(){
     for(const b of state.buoys){
       if(!b.bearingLine) continue;
-      const x = nmX(b.x), y = nmY(b.y);
+      const x = nmX(b.x);
+      const y = nmY(b.y);
       const len = b.rangeNm / SEA_NM * state.width * 2.0;
       const bx = x + Math.cos(b.bearingLine.bearing) * len;
       const by = y + Math.sin(b.bearingLine.bearing) * len;
+
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(bx, by);
@@ -1835,10 +1849,8 @@
         ctx.beginPath();
         ctx.moveTo(hx, hy);
         ctx.lineTo(cx, cy);
-
         if(h.snrContact.lineStyle === 'dash') ctx.setLineDash([6,5]);
         else ctx.setLineDash([]);
-
         ctx.strokeStyle = 'rgba(160,245,255,0.95)';
         ctx.lineWidth = 2;
         ctx.stroke();
@@ -1857,7 +1869,8 @@
 
   function drawContact(){
     if(!state.contact) return;
-    const x = nmX(state.contact.x), y = nmY(state.contact.y);
+    const x = nmX(state.contact.x);
+    const y = nmY(state.contact.y);
     const r = (state.contact.radiusNm || 0.06) / SEA_NM * state.width;
 
     ctx.beginPath();
@@ -1896,15 +1909,16 @@
 
   function drawPeriscopeGlint(){
     if(submarine.destroyed || !submarine.periscopeUp) return;
+
     const x = nmX(submarine.x);
     const y = nmY(submarine.y);
     const t = performance.now() * 0.01;
 
-    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
     ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
 
     if(Math.sin(t) > 0){
-      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.fillRect(Math.round(x) - 1, Math.round(y), 3, 1);
     }
   }
@@ -1926,9 +1940,9 @@
     ctx.lineTo(4, 6);
     ctx.lineTo(-4, 6);
     ctx.closePath();
-    ctx.fillStyle = "rgba(240,240,220,0.95)";
+    ctx.fillStyle = 'rgba(240,240,220,0.95)';
     ctx.fill();
-    ctx.strokeStyle = "rgba(60,60,60,0.8)";
+    ctx.strokeStyle = 'rgba(60,60,60,0.8)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
@@ -1961,18 +1975,19 @@
     drawSea();
 
     for(const b of state.buoys){
-      const x = nmX(b.x), y = nmY(b.y);
+      const x = nmX(b.x);
+      const y = nmY(b.y);
       const rr = b.rangeNm / SEA_NM * state.width;
 
       ctx.beginPath();
       ctx.arc(x, y, rr, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(120,190,150,0.24)";
+      ctx.strokeStyle = 'rgba(120,190,150,0.24)';
       ctx.lineWidth = 1.2;
       ctx.stroke();
 
       ctx.beginPath();
       ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(170,220,190,0.75)";
+      ctx.fillStyle = 'rgba(170,220,190,0.75)';
       ctx.fill();
     }
 
@@ -1983,21 +1998,23 @@
     drawPeriscopeGlint();
 
     for(const m of state.madContacts){
-      const x = nmX(m.x), y = nmY(m.y);
+      const x = nmX(m.x);
+      const y = nmY(m.y);
       const a = Math.max(0.25, Math.min(1, m.life / 60));
+
       ctx.save();
       ctx.translate(x, y);
       ctx.beginPath();
       ctx.arc(0, 0, 11, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(255,210,90,${0.8*a})`;
+      ctx.strokeStyle = `rgba(255,210,90,${0.8 * a})`;
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      ctx.fillStyle = `rgba(255,235,160,${0.95*a})`;
-      ctx.font = "bold 12px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("M", 0, 1);
+      ctx.fillStyle = `rgba(255,235,160,${0.95 * a})`;
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('M', 0, 1);
       ctx.restore();
     }
 
@@ -2026,7 +2043,7 @@
   window.addEventListener('resize', resize);
   resize();
   addLog('SYSTEM READY: HS 3機 AUTO radar sweep');
-  addLog(`FALSE TARGETS: THERMAL ${falseTargets.filter(t=>t.type==='THERMAL').length} / WHALE ${falseTargets.filter(t=>t.type==='WHALE').length} / WRECK ${falseTargets.filter(t=>t.type==='WRECK').length}`);
+  addLog(`FALSE TARGETS: THERMAL ${falseTargets.filter(t => t.type === 'THERMAL').length} / WHALE ${falseTargets.filter(t => t.type === 'WHALE').length} / WRECK ${falseTargets.filter(t => t.type === 'WRECK').length}`);
   updateUI();
   requestAnimationFrame(loop);
 })();
