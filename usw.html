@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>JLab USW Simulator v1.4.5 Complete</title>
+<title>JLab USW Simulator v1.4.6 Complete</title>
 <style>
   :root{
     --panel-bg:#050505;
@@ -179,6 +179,9 @@
   const FUEL_BINGO_LBS = 1000;
   const FUEL_BURN_PER_SEC = (3800 - 1000) / 300;
 
+  const SAFE_MARGIN_NM = SEA_NM * 0.05;     // 画面端5%
+  const COLLISION_DISTANCE_NM = 0.050;      // 見た目に合わせて拡大
+
   const state = {
     width: 1,
     height: 1,
@@ -254,7 +257,7 @@
       madDeploy: 0,
       madDeployTarget: 0,
 
-      collisionState: 'NONE', // NONE / EXIT
+      collisionState: 'NONE',
       collisionVX: 0,
       collisionVY: 0,
       smokeTimer: 0,
@@ -327,6 +330,12 @@
 
   function compassToCanvasRad(deg){
     return degToRad(90 - deg);
+  }
+
+  // スプライト描画が ctx.rotate(h.heading + Math.PI / 2) なので、
+  // 機首を任意方位へ向けるには -90° 補正が必要
+  function headingForSpriteNoseFromWind(deg){
+    return wrapHeading(compassToCanvasRad(deg) - Math.PI / 2);
   }
 
   function altitudeBand(h){
@@ -750,7 +759,7 @@
         if(altitudeBand(a) !== altitudeBand(b)) continue;
 
         const d = dist(a.x, a.y, b.x, b.y);
-        if(d < 0.028){
+        if(d < COLLISION_DISTANCE_NM){
           triggerCollision(a, b);
         }
       }
@@ -937,7 +946,7 @@
 
         const dg = dist(h.x, h.y, h.gateX, h.gateY);
         if(dg < 0.10){
-          const approachHeading = compassToCanvasRad(WIND_FROM_DEG);
+          const approachHeading = headingForSpriteNoseFromWind(WIND_FROM_DEG);
           const diff = wrapHeading(approachHeading - h.heading);
           h.heading += clamp(diff, -0.8 * dt, 0.8 * dt);
         }
@@ -957,7 +966,7 @@
           h.y += (dy / d) * Math.min(step, d);
         }
 
-        const approachHeading = compassToCanvasRad(WIND_FROM_DEG);
+        const approachHeading = headingForSpriteNoseFromWind(WIND_FROM_DEG);
         const diff = wrapHeading(approachHeading - h.heading);
         h.heading += clamp(diff, -1.4 * dt, 1.4 * dt);
 
@@ -982,7 +991,7 @@
       }
 
       if(h.snrState === 'ACTIVE'){
-        const hoverHeading = compassToCanvasRad(WIND_FROM_DEG);
+        const hoverHeading = headingForSpriteNoseFromWind(WIND_FROM_DEG);
         const diff = wrapHeading(hoverHeading - h.heading);
         h.heading += clamp(diff, -0.9 * dt, 0.9 * dt);
         h.x += (h.finalX - h.x) * 0.06;
@@ -1054,8 +1063,8 @@
     if(h.mission === 'MAD' && h.madTrack){
       h.desiredAltitude = 400;
       h.madAngle += 0.7 * dt * 8;
-      h.tx = clamp(h.madCenterX + Math.cos(h.madAngle) * 0.07, 0.08, SEA_NM - 0.08);
-      h.ty = clamp(h.madCenterY + Math.sin(h.madAngle) * 0.07, 0.08, SEA_NM - 0.08);
+      h.tx = clamp(h.madCenterX + Math.cos(h.madAngle) * 0.07, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
+      h.ty = clamp(h.madCenterY + Math.sin(h.madAngle) * 0.07, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
       moveToward(h, h.tx, h.ty, dt, 1.0, 1.35);
       return;
     }
@@ -1074,12 +1083,20 @@
       if(h.mission === 'MAD') h.desiredAltitude = 400;
       else h.desiredAltitude = 1000;
 
-      const tooNearEdge = (h.x < 0.12 || h.x > SEA_NM - 0.12 || h.y < 0.12 || h.y > SEA_NM - 0.12);
+      const tooNearEdge = (
+        h.x < SAFE_MARGIN_NM || h.x > SEA_NM - SAFE_MARGIN_NM ||
+        h.y < SAFE_MARGIN_NM || h.y > SEA_NM - SAFE_MARGIN_NM
+      );
+
       const d = dist(h.x, h.y, h.tx, h.ty);
       if(d < 0.03 || tooNearEdge){
-        h.tx = clamp(h.x + (Math.random() - 0.5) * 0.45, 0.12, SEA_NM - 0.12);
-        h.ty = clamp(h.y + (Math.random() - 0.5) * 0.45, 0.12, SEA_NM - 0.12);
+        h.tx = clamp(h.x + (Math.random() - 0.5) * 0.45, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
+        h.ty = clamp(h.y + (Math.random() - 0.5) * 0.45, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
       }
+
+      h.x = clamp(h.x, SAFE_MARGIN_NM * 0.85, SEA_NM - SAFE_MARGIN_NM * 0.85);
+      h.y = clamp(h.y, SAFE_MARGIN_NM * 0.85, SEA_NM - SAFE_MARGIN_NM * 0.85);
+
       moveToward(h, h.tx, h.ty, dt, 0.9, 1.25);
     }
   }
