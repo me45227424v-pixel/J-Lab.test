@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>JLab USW Simulator v1.4.4 Complete</title>
+<title>JLab USW Simulator v1.4.5 Complete</title>
 <style>
   :root{
     --panel-bg:#050505;
@@ -252,7 +252,13 @@
       madTrackTimer: 0,
 
       madDeploy: 0,
-      madDeployTarget: 0
+      madDeployTarget: 0,
+
+      collisionState: 'NONE', // NONE / EXIT
+      collisionVX: 0,
+      collisionVY: 0,
+      smokeTimer: 0,
+      alive: true
     };
   }
 
@@ -318,11 +324,15 @@
   function dist(ax, ay, bx, by){ return Math.hypot(ax - bx, ay - by); }
   function nmX(x){ return x / SEA_NM * state.width; }
   function nmY(y){ return y / SEA_NM * state.height; }
-  function pxToNmX(px){ return px / state.width * SEA_NM; }
-  function pxToNmY(py){ return px / state.height * SEA_NM; }
 
   function compassToCanvasRad(deg){
     return degToRad(90 - deg);
+  }
+
+  function altitudeBand(h){
+    if(h.altitude <= 220) return 'LOW';
+    if(h.altitude <= 700) return 'MID';
+    return 'HIGH';
   }
 
   function updateFalseTargets(dt){
@@ -417,13 +427,14 @@
   }
 
   function setSelected(h){
-    if(h.fuelState === 'OFFSCREEN') return;
+    if(h.fuelState === 'OFFSCREEN' || !h.alive) return;
     state.selected = h;
     updateUI();
   }
 
   function updateUI(){
-    if(!state.selected){
+    if(!state.selected || !state.selected.alive){
+      if(state.selected && !state.selected.alive) state.selected = null;
       selectedInfoEl.innerHTML = `
         <div class="small">HSをクリックまたはタップして選択。</div>
         <div class="small">未選択時は全機AUTO飛行。</div>
@@ -446,8 +457,9 @@
     hsListEl.innerHTML = '';
     helicopters.forEach(h => {
       let pilotLabel = (h.phase === 'AI' || h.phase === 'IDLE') ? 'AUTO' : h.phase;
-      if(h.phase === 'RTB') pilotLabel = 'RTB';
-      if(h.fuelState === 'OFFSCREEN') pilotLabel = 'MOTHER';
+      if(!h.alive) pilotLabel = 'LOST';
+      else if(h.phase === 'RTB') pilotLabel = 'RTB';
+      else if(h.fuelState === 'OFFSCREEN') pilotLabel = 'MOTHER';
 
       const div = document.createElement('div');
       div.className = `hsCard ${state.selected === h ? 'selected' : ''}`;
@@ -485,8 +497,8 @@
     }
 
     const h = state.selected;
-    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN'){
-      addLog(`HS-${h.id+1} unavailable (LOW FUEL / RTB)`);
+    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN' || !h.alive){
+      addLog(`HS-${h.id+1} unavailable (LOW FUEL / RTB / LOST)`);
       return;
     }
 
@@ -552,7 +564,7 @@
   });
 
   function launchSono(h){
-    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN') return;
+    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN' || !h.alive) return;
     state.buoys.push({
       x: h.x,
       y: h.y,
@@ -598,7 +610,7 @@
     let minDist = Infinity;
 
     for(const h of helicopters){
-      if(h.fuelState === 'OFFSCREEN') continue;
+      if(h.fuelState === 'OFFSCREEN' || !h.alive) continue;
       const hx = nmX(h.x);
       const hy = nmY(h.y);
       const d = Math.hypot(hx - px, hy - py);
@@ -626,8 +638,8 @@
     }
 
     const h = state.selected;
-    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN'){
-      addLog(`HS-${h.id+1} cannot accept task while RTB`);
+    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN' || !h.alive){
+      addLog(`HS-${h.id+1} cannot accept task while RTB / LOST`);
       return;
     }
 
@@ -693,6 +705,56 @@
     h.x += Math.cos(h.heading) * Math.min(step, d);
     h.y += Math.sin(h.heading) * Math.min(step, d);
     return d;
+  }
+
+  function triggerCollision(a, b){
+    if(!a.alive || !b.alive) return;
+    if(a.collisionState !== 'NONE' || b.collisionState !== 'NONE') return;
+
+    a.collisionState = 'EXIT';
+    b.collisionState = 'EXIT';
+    a.phase = 'COLLISION';
+    b.phase = 'COLLISION';
+
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    const d = Math.hypot(dx, dy) || 0.0001;
+
+    const nx = dx / d;
+    const ny = dy / d;
+
+    const exitSpeed = 0.22;
+    a.collisionVX = nx * exitSpeed;
+    a.collisionVY = ny * exitSpeed;
+    b.collisionVX = -nx * exitSpeed;
+    b.collisionVY = -ny * exitSpeed;
+
+    a.smokeTimer = 3.0;
+    b.smokeTimer = 3.0;
+
+    addLog(`HS-${a.id+1} / HS-${b.id+1} collision`);
+  }
+
+  function checkHSCollisions(){
+    const active = helicopters.filter(h =>
+      h.alive &&
+      h.fuelState !== 'OFFSCREEN' &&
+      h.collisionState === 'NONE'
+    );
+
+    for(let i = 0; i < active.length; i++){
+      for(let j = i + 1; j < active.length; j++){
+        const a = active[i];
+        const b = active[j];
+
+        if(altitudeBand(a) !== altitudeBand(b)) continue;
+
+        const d = dist(a.x, a.y, b.x, b.y);
+        if(d < 0.028){
+          triggerCollision(a, b);
+        }
+      }
+    }
   }
 
   function updateFuelAndRecovery(h, dt){
@@ -814,8 +876,26 @@
   }
 
   function updateHS(h, dt){
+    if(!h.alive) return;
+
     updateFuelAndRecovery(h, dt);
     if(h.fuelState === 'OFFSCREEN') return;
+
+    if(h.collisionState === 'EXIT'){
+      h.x += h.collisionVX * dt;
+      h.y += h.collisionVY * dt;
+      h.smokeTimer = Math.max(0, h.smokeTimer - dt);
+
+      if(
+        h.x < -0.20 || h.x > SEA_NM + 0.20 ||
+        h.y < -0.20 || h.y > SEA_NM + 0.20
+      ){
+        h.alive = false;
+        h.fuelState = 'OFFSCREEN';
+        if(state.selected === h) state.selected = null;
+      }
+      return;
+    }
 
     h.rotorPhase += 20 * dt;
     if(h.flashTimer > 0) h.flashTimer = Math.max(0, h.flashTimer - dt);
@@ -1064,7 +1144,7 @@
     for(const h of helicopters){
       if(h.mission !== 'MAD') continue;
       if(h.madDeploy < 0.95) continue;
-      if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN') continue;
+      if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN' || !h.alive) continue;
 
       const madHit = findNearestDetectableContact(h.x, h.y, getMadRangeNm(), 'MAD');
       if(h.altitude <= 500 && madHit){
@@ -1098,6 +1178,7 @@
     updateSubmarine(dt);
     updateFalseTargets(dt);
     helicopters.forEach(h => updateHS(h, dt));
+    checkHSCollisions();
     updateBuoyBearings(dt);
     updateMadDetection(dt);
   }
@@ -1200,10 +1281,26 @@
   }
 
   function drawHelicopterSprite(h, isSelected = false){
-    if(h.fuelState === 'OFFSCREEN') return;
+    if(h.fuelState === 'OFFSCREEN' || !h.alive) return;
 
     const x = nmX(h.x);
     const y = nmY(h.y);
+
+    if(h.collisionState === 'EXIT' && h.smokeTimer > 0){
+      for(let i = 0; i < 5; i++){
+        const ox = x - h.collisionVX * 55 * (i + 1) * 0.02;
+        const oy = y - h.collisionVY * 55 * (i + 1) * 0.02;
+        const r = 4 + i * 2;
+        ctx.beginPath();
+        ctx.arc(
+          ox + Math.sin(performance.now() * 0.002 + i) * 2,
+          oy + Math.cos(performance.now() * 0.002 + i * 0.7) * 2,
+          r, 0, Math.PI * 2
+        );
+        ctx.fillStyle = `rgba(90,90,90,${0.22 - i * 0.03})`;
+        ctx.fill();
+      }
+    }
 
     const altitudeScale =
       h.altitude <= 180 ? 0.90 :
@@ -1385,6 +1482,7 @@
     if(h.mission === "SNR") light = "#9fe8ff";
     if(h.phase === "TRANSIT") light = "#c9f2ff";
     if(h.fuelState === "LOW") light = "#ff7f7f";
+    if(h.collisionState === 'EXIT') light = "#cfcfcf";
 
     ctx.beginPath();
     ctx.arc(0, baseSize * 0.08, baseSize * 0.075, 0, Math.PI * 2);
@@ -1421,6 +1519,7 @@
     for(const h of helicopters){
       if(h.mission !== 'SNR') continue;
       if(!['HOVER_WAIT','ACTIVE'].includes(h.snrState)) continue;
+      if(!h.alive) continue;
 
       const hx = nmX(h.x);
       const hy = nmY(h.y);
@@ -1567,7 +1666,11 @@
       ctx.restore();
     }
 
-    helicopters.forEach(h => drawHelicopterSprite(h, state.selected === h));
+    const drawOrder = [...helicopters]
+      .filter(h => h.alive && h.fuelState !== 'OFFSCREEN')
+      .sort((a, b) => a.altitude - b.altitude);
+
+    drawOrder.forEach(h => drawHelicopterSprite(h, state.selected === h));
   }
 
   function loop(ts){
