@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>JLab USW Simulator v1.4.6 Complete</title>
+<title>JLab USW Simulator v1.4.7 Complete</title>
 <style>
   :root{
     --panel-bg:#050505;
@@ -41,7 +41,10 @@
     color:var(--text);
     border-left:2px solid var(--panel-border);
     padding:10px;
-    overflow:auto;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    gap:0;
   }
   .title{
     font-weight:700;
@@ -49,12 +52,14 @@
     margin:2px 0 8px;
     color:#e8ffe8;
     font-size:22px;
+    flex:0 0 auto;
   }
   .section{
     border:1px solid #173117;
     padding:8px;
     margin-bottom:10px;
     background:rgba(0,30,0,.16);
+    flex:0 0 auto;
   }
   .section h3{
     margin:0 0 6px;
@@ -104,6 +109,14 @@
     color:#d6faff;
     background:#0d1b20;
   }
+  button.attack{
+    border-color:#8c5f33;
+    color:#fff3d6;
+    background:#20170d;
+  }
+  button:disabled{
+    opacity:.42;
+  }
   button:active{
     transform:scale(.99);
   }
@@ -115,12 +128,17 @@
       0 0 0 1px rgba(60,255,114,0.25) inset,
       0 0 10px rgba(60,255,114,0.22);
   }
+  #logSection{
+    margin-top:auto;
+    margin-bottom:0;
+  }
   .log{
     font-size:11px;
-    line-height:1.32;
-    max-height:28vh;
-    overflow:auto;
-    white-space:pre-wrap;
+    line-height:1.2;
+    min-height:14px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
 </style>
 </head>
@@ -149,6 +167,14 @@
     </div>
 
     <div class="section">
+      <h3>CONTACT CONDITION</h3>
+      <div id="contactConditionInfo" class="small">NO CONTACT</div>
+      <div class="btnRow">
+        <button id="attackBtn" class="attack" disabled>ATTACK</button>
+      </div>
+    </div>
+
+    <div id="logSection" class="section">
       <h3>ALERT / LOG</h3>
       <div id="log" class="log"></div>
     </div>
@@ -165,10 +191,12 @@
   const selectedInfoEl = document.getElementById('selectedInfo');
   const hsListEl = document.getElementById('hsList');
   const logEl = document.getElementById('log');
+  const contactConditionInfoEl = document.getElementById('contactConditionInfo');
 
   const missionSnrBtn = document.getElementById('missionSnrBtn');
   const missionSonoBtn = document.getElementById('missionSonoBtn');
   const missionMadBtn = document.getElementById('missionMadBtn');
+  const attackBtn = document.getElementById('attackBtn');
 
   const SEA_NM = 2.0;
   const WIND_FROM_DEG = (Math.floor(Math.random() * 72) + 1) * 5;
@@ -180,6 +208,11 @@
   const FUEL_BURN_PER_SEC = ((3800 - 1000) / 300) / 3;
 
   const SAFE_MARGIN_NM = SEA_NM * 0.05;
+
+  const TRACK_EXPIRE_SEC = 6.0;
+  const TORPEDO_SPEED_NMPS = 0.022;
+  const TORPEDO_SEEK_RANGE_NM = 0.090;
+  const TORPEDO_HIT_RANGE_NM = 0.018;
 
   const state = {
     width: 1,
@@ -196,10 +229,19 @@
     lastContactRadius: null,
     lastDetectionTime: 0,
     whitecapSeedCount: 0,
-    plannedPoint: null
+    plannedPoint: null,
+
+    tracks: [],
+    trackSeq: 0,
+    trackCycleTimer: 0,
+    trackDisplayIndex: 0,
+
+    torpedo: null,
+    explosions: []
   };
 
   const submarine = {
+    type: 'SUB',
     x: 1.38,
     y: 0.84,
     heading: 2.2,
@@ -213,7 +255,8 @@
     turnRemainingDeg: 0,
     periscopeUp: false,
     periscopeTimer: 0,
-    periscopeCooldown: 0
+    periscopeCooldown: 0,
+    destroyed: false
   };
 
   function makeHS(id, x, y) {
@@ -254,6 +297,8 @@
       madCenterX: 0,
       madCenterY: 0,
       madTrackTimer: 0,
+      madDetectCooldown: 0,
+      madOrbitRadius: 0.10,
 
       madDeploy: 0,
       madDeployTarget: 0
@@ -276,7 +321,8 @@
         x: 0.12 + Math.random() * 1.76,
         y: 0.12 + Math.random() * 1.76,
         heading: 0,
-        speed: 0
+        speed: 0,
+        destroyed:false
       });
     }
 
@@ -288,7 +334,8 @@
         heading: Math.random() * Math.PI * 2,
         targetHeading: Math.random() * Math.PI * 2,
         speed: submarine.maxSpeed * (0.4 + Math.random() * 0.35),
-        turnTimer: 8 + Math.random() * 12
+        turnTimer: 8 + Math.random() * 12,
+        destroyed:false
       });
     }
 
@@ -299,7 +346,8 @@
         x: 0.12 + Math.random() * 1.76,
         y: 0.12 + Math.random() * 1.76,
         heading: 0,
-        speed: 0
+        speed: 0,
+        destroyed:false
       });
     }
 
@@ -309,10 +357,16 @@
   const falseTargets = makeFalseTargets();
 
   function getAllContacts(){
-    return [{ type:'SUB', x:submarine.x, y:submarine.y, ref:submarine }, ...falseTargets];
+    const contacts = [];
+    if(!submarine.destroyed) contacts.push(submarine);
+    for(const c of falseTargets){
+      if(!c.destroyed) contacts.push(c);
+    }
+    return contacts;
   }
 
   function degToRad(deg){ return deg * Math.PI / 180; }
+  function radToDeg(rad){ return rad * 180 / Math.PI; }
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
   function wrapHeading(a){
     while(a < -Math.PI) a += Math.PI * 2;
@@ -327,8 +381,15 @@
     return degToRad(90 - deg);
   }
 
+  function canvasRadToCompassDeg(rad){
+    let deg = 90 - radToDeg(rad);
+    while(deg < 0) deg += 360;
+    while(deg >= 360) deg -= 360;
+    return Math.round(deg / 5) * 5 % 360;
+  }
+
   function headingForSpriteNoseFromWind(deg){
-    return wrapHeading(compassToCanvasRad(deg) - Math.PI / 2);
+    return wrapHeading(compassToCanvasRad(deg));
   }
 
   function compassVector(deg){
@@ -345,6 +406,7 @@
 
   function updateFalseTargets(dt){
     for(const t of falseTargets){
+      if(t.destroyed) continue;
       if(t.type !== 'WHALE') continue;
 
       t.turnTimer -= dt;
@@ -419,7 +481,7 @@
   function addLog(msg){
     state.logs.unshift(`[${nowStamp()}] ${msg}`);
     state.logs = state.logs.slice(0, 45);
-    logEl.textContent = state.logs.join('\n');
+    logEl.textContent = state.logs[0] || '';
   }
 
   function windLineText(deg){
@@ -438,6 +500,52 @@
     if(h.fuelState === 'OFFSCREEN') return;
     state.selected = h;
     updateUI();
+  }
+
+  function registerTrack(target, sensor, estX, estY){
+    if(!target || target.destroyed) return;
+
+    let track = state.tracks.find(t => t.target === target);
+    if(!track){
+      track = {
+        id: ++state.trackSeq,
+        target,
+        type: target.type,
+        sensor,
+        x: estX,
+        y: estY,
+        lastSeen: state.simTime,
+        conditionTimer: 0,
+        displayHeadingDeg: canvasRadToCompassDeg(target.heading || 0),
+        displaySpeedKt: (target.speed || 0) * 3600
+      };
+      state.tracks.push(track);
+    } else {
+      track.sensor = sensor;
+      track.x = estX;
+      track.y = estY;
+      track.lastSeen = state.simTime;
+    }
+  }
+
+  function getActiveTracks(){
+    return state.tracks.filter(t =>
+      (state.simTime - t.lastSeen) <= TRACK_EXPIRE_SEC &&
+      (!t.target || !t.target.destroyed)
+    );
+  }
+
+  function getDisplayedTrack(){
+    const active = getActiveTracks();
+    if(active.length === 0) return null;
+    const idx = ((state.trackDisplayIndex % active.length) + active.length) % active.length;
+    return active[idx];
+  }
+
+  function formatTrackCondition(track){
+    const hdg = String(track.displayHeadingDeg).padStart(3,'0');
+    const spd = Math.max(0, Math.round(track.displaySpeedKt));
+    return `${track.type}  ${hdg}° / ${spd}KT`;
   }
 
   function updateUI(){
@@ -494,6 +602,27 @@
       if(state.selected.mission === 'SONO') missionSonoBtn.classList.add('activeMission');
       if(state.selected.mission === 'MAD') missionMadBtn.classList.add('activeMission');
     }
+
+    const displayedTrack = getDisplayedTrack();
+    if(displayedTrack){
+      contactConditionInfoEl.textContent = formatTrackCondition(displayedTrack);
+    } else {
+      contactConditionInfoEl.textContent = 'NO CONTACT';
+    }
+
+    const attackAllowed =
+      !!state.selected &&
+      !!displayedTrack &&
+      !state.torpedo &&
+      state.selected.fuelState !== 'LOW' &&
+      state.selected.fuelState !== 'OFFSCREEN' &&
+      (
+        (state.selected.mission === 'SNR' && (state.selected.snrState === 'ACTIVE' || state.selected.snrState === 'HOVER_WAIT')) ||
+        state.selected.mission === 'SONO' ||
+        state.selected.mission === 'MAD'
+      );
+
+    attackBtn.disabled = !attackAllowed;
   }
 
   function setMission(mission){
@@ -570,6 +699,12 @@
     e.preventDefault();
     e.stopPropagation();
     setMission('MAD');
+  });
+
+  attackBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    launchTorpedo();
   });
 
   function launchSono(h){
@@ -781,6 +916,8 @@
   }
 
   function updateSubmarine(dt){
+    if(submarine.destroyed) return;
+
     if(submarine.periscopeCooldown > 0) submarine.periscopeCooldown -= dt;
 
     if(submarine.periscopeUp){
@@ -855,6 +992,10 @@
     if(h.flashTimer > 0) h.flashTimer = Math.max(0, h.flashTimer - dt);
     h.altitude += (h.desiredAltitude - h.altitude) * Math.min(1, dt * 1.8);
 
+    if(h.madDetectCooldown > 0){
+      h.madDetectCooldown = Math.max(0, h.madDetectCooldown - dt);
+    }
+
     if(h.madDeploy !== h.madDeployTarget){
       const dir = h.madDeployTarget > h.madDeploy ? 1 : -1;
       h.madDeploy += dir * (dt / 5);
@@ -890,10 +1031,8 @@
         h.desiredAltitude = 150;
 
         const dg = dist(h.x, h.y, h.gateX, h.gateY);
-        if(dg < 0.10){
-          const diff = wrapHeading(h.snrApproachHeading - h.heading);
-          h.heading += clamp(diff, -0.9 * dt, 0.9 * dt);
-        }
+        const diff = wrapHeading(h.snrApproachHeading - h.heading);
+        h.heading += clamp(diff, -1.0 * dt, 1.0 * dt);
 
         if(dg < 0.02){
           h.heading = h.snrApproachHeading;
@@ -928,6 +1067,8 @@
       if(h.snrState === 'HOVER_WAIT'){
         h.desiredAltitude = 70;
         h.heading = h.snrApproachHeading;
+        h.x = h.finalX;
+        h.y = h.finalY;
         h.snrWaitTimer -= dt;
         if(h.snrWaitTimer <= 0){
           h.snrState = 'ACTIVE';
@@ -950,8 +1091,10 @@
           h.snrPulseTimer = 0;
           h.snrPulseAge = 0;
 
-          submarine.targetHeading = Math.atan2(submarine.y - h.y, submarine.x - h.x);
-          submarine.targetSpeed = Math.max(submarine.targetSpeed, submarine.maxSpeed * 0.8);
+          if(!submarine.destroyed){
+            submarine.targetHeading = Math.atan2(submarine.y - h.y, submarine.x - h.x);
+            submarine.targetSpeed = Math.max(submarine.targetSpeed, submarine.maxSpeed * 0.8);
+          }
 
           const maxR = getSnrRangeNm();
           const snrHit = findNearestDetectableContact(h.x, h.y, maxR, 'SNR');
@@ -975,6 +1118,7 @@
               state.lastContactSensor = `SNR-${target.type}`;
               state.lastContactRadius = '0.04 nm';
               if(target.type === 'SUB') state.lastDetectionTime = state.simTime;
+              registerTrack(target, 'SNR', cx, cy);
             }
           } else {
             h.snrContact = null;
@@ -1023,10 +1167,13 @@
 
     if(h.mission === 'MAD' && h.madTrack){
       h.desiredAltitude = 400;
-      h.madAngle += 0.7 * dt * 8;
-      h.tx = clamp(h.madCenterX + Math.cos(h.madAngle) * 0.07, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
-      h.ty = clamp(h.madCenterY + Math.sin(h.madAngle) * 0.07, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
-      moveToward(h, h.tx, h.ty, dt, 1.0, 1.35);
+      h.madAngle += 1.35 * dt;
+
+      const orbitR = h.madOrbitRadius || 0.10;
+      h.tx = clamp(h.madCenterX + Math.cos(h.madAngle) * orbitR, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
+      h.ty = clamp(h.madCenterY + Math.sin(h.madAngle) * orbitR, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM);
+
+      moveToward(h, h.tx, h.ty, dt, 0.92, 0.95);
       return;
     }
 
@@ -1062,6 +1209,170 @@
     }
   }
 
+  function updateTracks(dt){
+    state.trackCycleTimer += dt;
+
+    for(const t of state.tracks){
+      if(t.target && !t.target.destroyed){
+        t.conditionTimer += dt;
+        if(t.conditionTimer >= 2){
+          t.conditionTimer = 0;
+          t.displayHeadingDeg = canvasRadToCompassDeg(t.target.heading || 0);
+          t.displaySpeedKt = (t.target.speed || 0) * 3600;
+        }
+      }
+    }
+
+    state.tracks = state.tracks.filter(t =>
+      (state.simTime - t.lastSeen) <= TRACK_EXPIRE_SEC &&
+      (!t.target || !t.target.destroyed)
+    );
+
+    const active = getActiveTracks();
+    if(active.length === 0){
+      state.trackDisplayIndex = 0;
+      state.trackCycleTimer = 0;
+    } else if(active.length > 1 && state.trackCycleTimer >= 2){
+      state.trackCycleTimer = 0;
+      state.trackDisplayIndex = (state.trackDisplayIndex + 1) % active.length;
+    }
+  }
+
+  function launchTorpedo(){
+    if(state.torpedo) return;
+
+    const h = state.selected;
+    const track = getDisplayedTrack();
+    if(!h || !track) return;
+
+    const isSNRShot = (h.mission === 'SNR' && (h.snrState === 'ACTIVE' || h.snrState === 'HOVER_WAIT'));
+    const willHit = Math.random() < 0.9;
+
+    if(isSNRShot){
+      const heading = Math.atan2(track.y - h.y, track.x - h.x);
+      state.torpedo = {
+        mode:'direct',
+        x:h.x,
+        y:h.y,
+        heading,
+        speed:TORPEDO_SPEED_NMPS,
+        target:track.target,
+        willHit
+      };
+      addLog(`HS-${h.id+1} TORPEDO AWAY (STRAIGHT RUN)`);
+    } else if(h.mission === 'SONO' || h.mission === 'MAD'){
+      state.torpedo = {
+        mode:'search',
+        x:h.x,
+        y:h.y,
+        heading:h.heading,
+        speed:TORPEDO_SPEED_NMPS,
+        target:track.target,
+        willHit,
+        centerX:h.x,
+        centerY:h.y,
+        searchAngle:0,
+        searchRadius:0.06
+      };
+      addLog(`HS-${h.id+1} TORPEDO AWAY (SEARCH RUN)`);
+    } else {
+      addLog('ATTACK NOT AVAILABLE');
+      return;
+    }
+
+    updateUI();
+  }
+
+  function triggerExplosion(x, y){
+    state.explosions.push({
+      x, y,
+      age:0,
+      life:2.5
+    });
+  }
+
+  function hitTarget(target){
+    if(!target || target.destroyed) return;
+    target.destroyed = true;
+    triggerExplosion(target.x, target.y);
+    addLog(`${target.type} HIT`);
+    state.tracks = state.tracks.filter(t => t.target !== target);
+
+    if(target === submarine){
+      state.contact = null;
+      state.madContacts = [];
+      helicopters.forEach(h => {
+        h.snrContact = null;
+        h.madTrack = false;
+      });
+    }
+  }
+
+  function updateTorpedo(dt){
+    const torp = state.torpedo;
+    if(!torp) return;
+
+    const target = torp.target && !torp.target.destroyed ? torp.target : null;
+
+    if(torp.mode === 'direct'){
+      torp.x += Math.cos(torp.heading) * torp.speed * dt;
+      torp.y += Math.sin(torp.heading) * torp.speed * dt;
+
+      if(torp.willHit && target && dist(torp.x, torp.y, target.x, target.y) < TORPEDO_HIT_RANGE_NM){
+        hitTarget(target);
+        state.torpedo = null;
+        return;
+      }
+    }
+
+    else if(torp.mode === 'search'){
+      torp.searchAngle += 1.7 * dt;
+      torp.x = torp.centerX + Math.cos(torp.searchAngle) * torp.searchRadius;
+      torp.y = torp.centerY + Math.sin(torp.searchAngle) * torp.searchRadius;
+
+      if(target && dist(torp.x, torp.y, target.x, target.y) <= TORPEDO_SEEK_RANGE_NM){
+        torp.heading = Math.atan2(target.y - torp.y, target.x - torp.x);
+        torp.mode = torp.willHit ? 'home' : 'miss_run';
+      }
+    }
+
+    else if(torp.mode === 'home'){
+      if(!target){
+        state.torpedo = null;
+        return;
+      }
+
+      torp.heading = Math.atan2(target.y - torp.y, target.x - torp.x);
+      torp.x += Math.cos(torp.heading) * torp.speed * dt;
+      torp.y += Math.sin(torp.heading) * torp.speed * dt;
+
+      if(dist(torp.x, torp.y, target.x, target.y) < TORPEDO_HIT_RANGE_NM){
+        hitTarget(target);
+        state.torpedo = null;
+        return;
+      }
+    }
+
+    else if(torp.mode === 'miss_run'){
+      torp.x += Math.cos(torp.heading) * torp.speed * dt;
+      torp.y += Math.sin(torp.heading) * torp.speed * dt;
+    }
+
+    if(torp.x < -0.12 || torp.x > SEA_NM + 0.12 || torp.y < -0.12 || torp.y > SEA_NM + 0.12){
+      state.torpedo = null;
+      addLog('TORPEDO OUT OF AREA');
+    }
+  }
+
+  function updateExplosions(dt){
+    for(let i = state.explosions.length - 1; i >= 0; i--){
+      state.explosions[i].age += dt;
+      if(state.explosions[i].age >= state.explosions[i].life){
+        state.explosions.splice(i, 1);
+      }
+    }
+  }
+
   function updateBuoyBearings(dt){
     for(let i = state.buoys.length - 1; i >= 0; i--){
       const b = state.buoys[i];
@@ -1084,6 +1395,7 @@
             b.bearingLine = {
               bearing: trueBearing + degToRad(-10 + Math.random() * 20)
             };
+            registerTrack(target, 'SONO', target.x, target.y);
           }
         }
       }
@@ -1092,7 +1404,7 @@
     }
 
     const active = state.buoys.filter(b => b.bearingLine);
-    if(active.length >= 2){
+    if(active.length >= 2 && !submarine.destroyed){
       const b1 = active[0], b2 = active[1];
       const p1 = {x:b1.x, y:b1.y};
       const p2 = {x:b2.x, y:b2.y};
@@ -1113,6 +1425,7 @@
           state.lastContactSensor = 'SONO-FIX';
           state.lastContactRadius = '0.07 nm';
           state.lastDetectionTime = state.simTime;
+          registerTrack(submarine, 'SONO-FIX', ix, iy);
         }
       }
     }
@@ -1123,25 +1436,30 @@
       if(h.mission !== 'MAD') continue;
       if(h.madDeploy < 0.95) continue;
       if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN') continue;
+      if(h.madDetectCooldown > 0) continue;
 
       const madHit = findNearestDetectableContact(h.x, h.y, getMadRangeNm(), 'MAD');
       if(h.altitude <= 500 && madHit){
         const target = madHit.contact;
         const mx = clamp(target.x + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
         const my = clamp(target.y + (Math.random() - 0.5) * 0.015, 0, SEA_NM);
-        state.madContacts.push({x:mx, y:my, life:60});
+
+        state.madContacts = [{x:mx, y:my, life:60}];
 
         h.madTrack = true;
         h.madCenterX = mx;
         h.madCenterY = my;
         h.madAngle = Math.atan2(h.y - my, h.x - mx);
         h.madTrackTimer = 25;
+        h.madDetectCooldown = 20;
+        h.madOrbitRadius = 0.10;
 
         state.contact = {x:mx, y:my, radiusNm:0.08, sensor:'MAD'};
         state.lastContactTime = nowStamp();
         state.lastContactSensor = `MAD-${target.type}`;
         state.lastContactRadius = '0.08 nm';
         if(target.type === 'SUB') state.lastDetectionTime = state.simTime;
+        registerTrack(target, 'MAD', mx, my);
       }
     }
 
@@ -1158,6 +1476,9 @@
     helicopters.forEach(h => updateHS(h, dt));
     updateBuoyBearings(dt);
     updateMadDetection(dt);
+    updateTracks(dt);
+    updateTorpedo(dt);
+    updateExplosions(dt);
   }
 
   function drawSea(){
@@ -1568,7 +1889,7 @@
   }
 
   function drawPeriscopeGlint(){
-    if(!submarine.periscopeUp) return;
+    if(submarine.destroyed || !submarine.periscopeUp) return;
     const x = nmX(submarine.x);
     const y = nmY(submarine.y);
     const t = performance.now() * 0.01;
@@ -1579,6 +1900,54 @@
     if(Math.sin(t) > 0){
       ctx.fillStyle = "rgba(255,255,255,0.35)";
       ctx.fillRect(Math.round(x) - 1, Math.round(y), 3, 1);
+    }
+  }
+
+  function drawTorpedo(){
+    const torp = state.torpedo;
+    if(!torp) return;
+
+    const x = nmX(torp.x);
+    const y = nmY(torp.y);
+    const angle = torp.mode === 'search' ? torp.searchAngle + Math.PI / 2 : torp.heading + Math.PI / 2;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    ctx.beginPath();
+    ctx.moveTo(0, -8);
+    ctx.lineTo(4, 6);
+    ctx.lineTo(-4, 6);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(240,240,220,0.95)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(60,60,60,0.8)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawExplosions(){
+    for(const ex of state.explosions){
+      const x = nmX(ex.x);
+      const y = nmY(ex.y);
+      const t = ex.age / ex.life;
+      const r1 = 10 + t * 60;
+      const r2 = 22 + t * 85;
+
+      ctx.beginPath();
+      ctx.arc(x, y, r1, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(220,245,255,${0.65 * (1 - t)})`;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(x, y, r2, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(180,220,255,${0.45 * (1 - t)})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
   }
 
@@ -1625,6 +1994,9 @@
       ctx.fillText("M", 0, 1);
       ctx.restore();
     }
+
+    drawTorpedo();
+    drawExplosions();
 
     const drawOrder = [...helicopters]
       .filter(h => h.fuelState !== 'OFFSCREEN')
