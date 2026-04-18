@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FILE NOT FOUND</title>
+
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --font-main: clamp(28px, 5vw, 48px);
+  --font-title: clamp(40px, 8vw, 72px);
+  --green:#00d94f;
+  --green-dim:rgba(0,217,79,0.3);
+  --amber:#ffb347;
+  --amber-bg:rgba(255,179,71,0.1);
+}
+
+body{
+  margin:0;
+  background:#000;
+  color:var(--green);
+  font-family:"VT323", monospace;
+  overflow:hidden;
+}
+
+/* スキャンライン */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(0,217,79,0.02) 0px,
+    rgba(0,217,79,0.02) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* 中央表示 */
+.container{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  height:100dvh;
+  text-align:center;
+  padding:20px;
+}
+
+/* タイトル */
+.title{
+  font-size:var(--font-title);
+  margin-bottom:40px;
+  line-height:1;
+}
+
+/* ボタン */
+.button{
+  font-size:var(--font-main);
+  padding:14px 40px;
+  border:1px solid var(--green-dim);
+  cursor:pointer;
+  user-select:none;
+  position:relative;
+  text-decoration:none;
+  color:var(--green);
+}
+
+.button.active{
+  color:var(--amber);
+  background:var(--amber-bg);
+}
+
+.button.active::before{
+  content:">";
+  position:absolute;
+  left:10px;
+}
+
+/* フッター */
+.footer{
+  position:fixed;
+  bottom:10px;
+  right:10px;
+  font-size:var(--font-main);
+  opacity:0.8;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+  <div class="title">FILE NOT FOUND</div>
+
+  <div class="button" id="btn">I-BIT</div>
+</div>
+
+<div class="footer">RETURN AVAILABLE</div>
+
+<script>
+const btn = document.getElementById("btn");
+
+let ctx;
+
+/* ===== 音 ===== */
+function beep(){
+  if(!ctx){
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+
+  o.type = "sine";
+  o.frequency.value = 600;
+
+  o.connect(g);
+  g.connect(ctx.destination);
+
+  g.gain.setValueAtTime(0.05, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+
+  o.start();
+  o.stop(ctx.currentTime + 0.2);
+}
+
+/* ===== UI ===== */
+function activate(){
+  btn.classList.add("active");
+}
+
+function goTop(){
+  beep();
+  setTimeout(() => {
+    window.location.href = "index.html";
+  }, 200);
+}
+
+btn.addEventListener("pointerenter", activate);
+btn.addEventListener("click", goTop);
+
+/* キーボード対応 */
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Enter"){
+    activate();
+    goTop();
+  }
+});
+</script>
+
+</body>
+</html>
