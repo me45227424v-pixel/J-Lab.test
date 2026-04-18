@@ -177,10 +177,9 @@
   const HS_MAX_SPEED = 0.035;
   const FUEL_START_LBS = 3800;
   const FUEL_BINGO_LBS = 1000;
-  const FUEL_BURN_PER_SEC = (3800 - 1000) / 300;
+  const FUEL_BURN_PER_SEC = ((3800 - 1000) / 300) / 3;
 
-  const SAFE_MARGIN_NM = SEA_NM * 0.05;     // 画面端5%
-  const COLLISION_DISTANCE_NM = 0.050;      // 見た目に合わせて拡大
+  const SAFE_MARGIN_NM = SEA_NM * 0.05;
 
   const state = {
     width: 1,
@@ -247,6 +246,8 @@
       gateY: null,
       finalX: null,
       finalY: null,
+      snrApproachHeading: 0,
+      snrNextTask: null,
 
       madTrack: false,
       madAngle: 0,
@@ -255,20 +256,14 @@
       madTrackTimer: 0,
 
       madDeploy: 0,
-      madDeployTarget: 0,
-
-      collisionState: 'NONE',
-      collisionVX: 0,
-      collisionVY: 0,
-      smokeTimer: 0,
-      alive: true
+      madDeployTarget: 0
     };
   }
 
   const helicopters = [
-    makeHS(0, 1.00, 0.10),
-    makeHS(1, 0.10, 1.80),
-    makeHS(2, 1.90, 1.80)
+    makeHS(0, 1.00, 0.18),
+    makeHS(1, 0.18, 1.68),
+    makeHS(2, 1.82, 1.68)
   ];
 
   function makeFalseTargets(){
@@ -332,16 +327,20 @@
     return degToRad(90 - deg);
   }
 
-  // スプライト描画が ctx.rotate(h.heading + Math.PI / 2) なので、
-  // 機首を任意方位へ向けるには -90° 補正が必要
   function headingForSpriteNoseFromWind(deg){
     return wrapHeading(compassToCanvasRad(deg) - Math.PI / 2);
   }
 
-  function altitudeBand(h){
-    if(h.altitude <= 220) return 'LOW';
-    if(h.altitude <= 700) return 'MID';
-    return 'HIGH';
+  function compassVector(deg){
+    const r = degToRad(deg);
+    return {
+      x: Math.sin(r),
+      y: -Math.cos(r)
+    };
+  }
+
+  function fuelDisplay(v){
+    return Math.max(0, Math.floor(v / 10) * 10);
   }
 
   function updateFalseTargets(dt){
@@ -430,20 +429,19 @@
   }
 
   function missionAltitudeText(h){
-    if(h.mission === 'SNR') return '150 FT';
+    if(h.mission === 'SNR') return '70 FT';
     if(h.mission === 'MAD') return '400 FT';
     return '1000 FT';
   }
 
   function setSelected(h){
-    if(h.fuelState === 'OFFSCREEN' || !h.alive) return;
+    if(h.fuelState === 'OFFSCREEN') return;
     state.selected = h;
     updateUI();
   }
 
   function updateUI(){
-    if(!state.selected || !state.selected.alive){
-      if(state.selected && !state.selected.alive) state.selected = null;
+    if(!state.selected){
       selectedInfoEl.innerHTML = `
         <div class="small">HSをクリックまたはタップして選択。</div>
         <div class="small">未選択時は全機AUTO飛行。</div>
@@ -458,7 +456,7 @@
         <div><strong>HS-${h.id + 1}</strong> / <span style="color:#fff0c2">${h.mission}</span></div>
         <div class="small">WIND LINE: ${windLineText(WIND_FROM_DEG)}</div>
         <div class="small">ALT: ${missionAltitudeText(h)}</div>
-        <div class="small">FUEL: ${Math.max(0, Math.round(h.fuel))} lbs</div>
+        <div class="small">FUEL: ${fuelDisplay(h.fuel)} lbs</div>
         ${madLine}
       `;
     }
@@ -466,9 +464,8 @@
     hsListEl.innerHTML = '';
     helicopters.forEach(h => {
       let pilotLabel = (h.phase === 'AI' || h.phase === 'IDLE') ? 'AUTO' : h.phase;
-      if(!h.alive) pilotLabel = 'LOST';
-      else if(h.phase === 'RTB') pilotLabel = 'RTB';
-      else if(h.fuelState === 'OFFSCREEN') pilotLabel = 'MOTHER';
+      if(h.phase === 'RTB') pilotLabel = 'RTB';
+      if(h.fuelState === 'OFFSCREEN') pilotLabel = 'MOTHER';
 
       const div = document.createElement('div');
       div.className = `hsCard ${state.selected === h ? 'selected' : ''}`;
@@ -476,7 +473,7 @@
         <div class="kv"><strong>HS-${h.id + 1}</strong><span>${h.mission}</span></div>
         <div class="kv"><span>PILOT</span><span>${pilotLabel}</span></div>
         <div class="kv"><span>ALT</span><span>${missionAltitudeText(h)}</span></div>
-        <div class="kv"><span>FUEL</span><span>${Math.max(0, Math.round(h.fuel))} lbs</span></div>
+        <div class="kv"><span>FUEL</span><span>${fuelDisplay(h.fuel)} lbs</span></div>
       `;
       div.addEventListener('click', () => setSelected(h));
       hsListEl.appendChild(div);
@@ -506,8 +503,8 @@
     }
 
     const h = state.selected;
-    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN' || !h.alive){
-      addLog(`HS-${h.id+1} unavailable (LOW FUEL / RTB / LOST)`);
+    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN'){
+      addLog(`HS-${h.id+1} unavailable (LOW FUEL / RTB)`);
       return;
     }
 
@@ -518,16 +515,19 @@
       h.desiredAltitude = 150;
       h.phase = 'MANUAL';
       h.snrState = 'NONE';
+      h.snrNextTask = null;
       h.madTrack = false;
     } else if(mission === 'SONO'){
       h.desiredAltitude = 1000;
       h.phase = 'MANUAL';
       h.snrState = 'NONE';
+      h.snrNextTask = null;
       h.madTrack = false;
     } else if(mission === 'MAD'){
       h.desiredAltitude = 400;
       h.phase = 'MANUAL';
       h.snrState = 'NONE';
+      h.snrNextTask = null;
       h.madTrack = false;
     }
 
@@ -573,7 +573,7 @@
   });
 
   function launchSono(h){
-    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN' || !h.alive) return;
+    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN') return;
     state.buoys.push({
       x: h.x,
       y: h.y,
@@ -587,11 +587,12 @@
   }
 
   function computeSonarGate(tx, ty){
-    const windTo = compassToCanvasRad(WIND_FROM_DEG + 180);
-    const offset = 0.09;
+    const gateOffsetNm = 0.06;
+    const opp = (WIND_FROM_DEG + 180) % 360;
+    const v = compassVector(opp);
     return {
-      x: clamp(tx + Math.cos(windTo) * offset, 0.04, SEA_NM - 0.04),
-      y: clamp(ty + Math.sin(windTo) * offset, 0.04, SEA_NM - 0.04)
+      x: clamp(tx + v.x * gateOffsetNm, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM),
+      y: clamp(ty + v.y * gateOffsetNm, SAFE_MARGIN_NM, SEA_NM - SAFE_MARGIN_NM)
     };
   }
 
@@ -619,7 +620,7 @@
     let minDist = Infinity;
 
     for(const h of helicopters){
-      if(h.fuelState === 'OFFSCREEN' || !h.alive) continue;
+      if(h.fuelState === 'OFFSCREEN') continue;
       const hx = nmX(h.x);
       const hy = nmY(h.y);
       const d = Math.hypot(hx - px, hy - py);
@@ -647,32 +648,43 @@
     }
 
     const h = state.selected;
-    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN' || !h.alive){
-      addLog(`HS-${h.id+1} cannot accept task while RTB / LOST`);
+    if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN'){
+      addLog(`HS-${h.id+1} cannot accept task while RTB`);
       return;
     }
 
     state.plannedPoint = { x: p.x, y: p.y, ttl: 9999 };
 
     if(h.mission === 'SNR'){
-      if(h.snrState === 'ACTIVE'){
+      const gate = computeSonarGate(p.x, p.y);
+      const approachHeading = headingForSpriteNoseFromWind(WIND_FROM_DEG);
+
+      if(h.snrState === 'ACTIVE' || h.snrState === 'HOVER_WAIT'){
+        h.snrNextTask = {
+          finalX: p.x,
+          finalY: p.y,
+          gateX: gate.x,
+          gateY: gate.y,
+          approachHeading
+        };
         h.snrState = 'EXIT_WAIT';
         h.snrWaitTimer = 5;
         h.phase = 'MANUAL';
-        addLog(`HS-${h.id+1} dip ended, exit prep`);
+        addLog(`HS-${h.id+1} dip ended, next dip queued -> (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
         return;
       }
 
-      const gate = computeSonarGate(p.x, p.y);
       h.finalX = p.x;
       h.finalY = p.y;
       h.gateX = gate.x;
       h.gateY = gate.y;
       h.tx = gate.x;
       h.ty = gate.y;
+      h.snrApproachHeading = approachHeading;
+      h.snrNextTask = null;
       h.snrState = 'APPROACH';
       h.phase = 'MANUAL';
-      h.desiredAltitude = 400;
+      h.desiredAltitude = 150;
       h.madTrack = false;
       addLog(`HS-${h.id+1} SNR approach -> (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
       return;
@@ -716,56 +728,6 @@
     return d;
   }
 
-  function triggerCollision(a, b){
-    if(!a.alive || !b.alive) return;
-    if(a.collisionState !== 'NONE' || b.collisionState !== 'NONE') return;
-
-    a.collisionState = 'EXIT';
-    b.collisionState = 'EXIT';
-    a.phase = 'COLLISION';
-    b.phase = 'COLLISION';
-
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    const d = Math.hypot(dx, dy) || 0.0001;
-
-    const nx = dx / d;
-    const ny = dy / d;
-
-    const exitSpeed = 0.22;
-    a.collisionVX = nx * exitSpeed;
-    a.collisionVY = ny * exitSpeed;
-    b.collisionVX = -nx * exitSpeed;
-    b.collisionVY = -ny * exitSpeed;
-
-    a.smokeTimer = 3.0;
-    b.smokeTimer = 3.0;
-
-    addLog(`HS-${a.id+1} / HS-${b.id+1} collision`);
-  }
-
-  function checkHSCollisions(){
-    const active = helicopters.filter(h =>
-      h.alive &&
-      h.fuelState !== 'OFFSCREEN' &&
-      h.collisionState === 'NONE'
-    );
-
-    for(let i = 0; i < active.length; i++){
-      for(let j = i + 1; j < active.length; j++){
-        const a = active[i];
-        const b = active[j];
-
-        if(altitudeBand(a) !== altitudeBand(b)) continue;
-
-        const d = dist(a.x, a.y, b.x, b.y);
-        if(d < COLLISION_DISTANCE_NM){
-          triggerCollision(a, b);
-        }
-      }
-    }
-  }
-
   function updateFuelAndRecovery(h, dt){
     if(h.fuelState === 'OFFSCREEN'){
       h.respawnTimer -= dt;
@@ -789,6 +751,7 @@
       h.phase = 'RTB';
       h.madTrack = false;
       h.snrState = 'NONE';
+      h.snrNextTask = null;
       h.madDeployTarget = 0;
 
       const left = h.x;
@@ -885,26 +848,8 @@
   }
 
   function updateHS(h, dt){
-    if(!h.alive) return;
-
     updateFuelAndRecovery(h, dt);
     if(h.fuelState === 'OFFSCREEN') return;
-
-    if(h.collisionState === 'EXIT'){
-      h.x += h.collisionVX * dt;
-      h.y += h.collisionVY * dt;
-      h.smokeTimer = Math.max(0, h.smokeTimer - dt);
-
-      if(
-        h.x < -0.20 || h.x > SEA_NM + 0.20 ||
-        h.y < -0.20 || h.y > SEA_NM + 0.20
-      ){
-        h.alive = false;
-        h.fuelState = 'OFFSCREEN';
-        if(state.selected === h) state.selected = null;
-      }
-      return;
-    }
 
     h.rotorPhase += 20 * dt;
     if(h.flashTimer > 0) h.flashTimer = Math.max(0, h.flashTimer - dt);
@@ -942,16 +887,18 @@
     if(h.mission === 'SNR' || h.snrState !== 'NONE'){
       if(h.snrState === 'APPROACH'){
         moveToward(h, h.gateX, h.gateY, dt, 0.9, 1.2);
-        h.desiredAltitude = 400;
+        h.desiredAltitude = 150;
 
         const dg = dist(h.x, h.y, h.gateX, h.gateY);
         if(dg < 0.10){
-          const approachHeading = headingForSpriteNoseFromWind(WIND_FROM_DEG);
-          const diff = wrapHeading(approachHeading - h.heading);
-          h.heading += clamp(diff, -0.8 * dt, 0.8 * dt);
+          const diff = wrapHeading(h.snrApproachHeading - h.heading);
+          h.heading += clamp(diff, -0.9 * dt, 0.9 * dt);
         }
 
-        if(dg < 0.03) h.snrState = 'DESCEND';
+        if(dg < 0.02){
+          h.heading = h.snrApproachHeading;
+          h.snrState = 'DESCEND';
+        }
         return;
       }
 
@@ -961,18 +908,17 @@
         const d = Math.hypot(dx, dy);
 
         if(d > 0.0001){
-          const step = h.speed * 0.45 * dt;
+          const step = h.speed * 0.38 * dt;
           h.x += (dx / d) * Math.min(step, d);
           h.y += (dy / d) * Math.min(step, d);
         }
 
-        const approachHeading = headingForSpriteNoseFromWind(WIND_FROM_DEG);
-        const diff = wrapHeading(approachHeading - h.heading);
-        h.heading += clamp(diff, -1.4 * dt, 1.4 * dt);
+        h.heading = h.snrApproachHeading;
+        h.desiredAltitude = 70;
 
-        h.desiredAltitude = 150;
-
-        if(dist(h.x, h.y, h.finalX, h.finalY) < 0.01 && Math.abs(h.altitude - 150) < 15){
+        if(dist(h.x, h.y, h.finalX, h.finalY) < 0.008 && Math.abs(h.altitude - 70) < 8){
+          h.x = h.finalX;
+          h.y = h.finalY;
           h.snrState = 'HOVER_WAIT';
           h.snrWaitTimer = 5;
         }
@@ -980,6 +926,8 @@
       }
 
       if(h.snrState === 'HOVER_WAIT'){
+        h.desiredAltitude = 70;
+        h.heading = h.snrApproachHeading;
         h.snrWaitTimer -= dt;
         if(h.snrWaitTimer <= 0){
           h.snrState = 'ACTIVE';
@@ -991,11 +939,10 @@
       }
 
       if(h.snrState === 'ACTIVE'){
-        const hoverHeading = headingForSpriteNoseFromWind(WIND_FROM_DEG);
-        const diff = wrapHeading(hoverHeading - h.heading);
-        h.heading += clamp(diff, -0.9 * dt, 0.9 * dt);
-        h.x += (h.finalX - h.x) * 0.06;
-        h.y += (h.finalY - h.y) * 0.06;
+        h.desiredAltitude = 70;
+        h.heading = h.snrApproachHeading;
+        h.x = h.finalX;
+        h.y = h.finalY;
 
         h.snrPulseTimer += dt;
         h.snrPulseAge += dt;
@@ -1053,8 +1000,22 @@
         const fy = h.y + Math.sin(h.heading) * 0.06;
         moveToward(h, fx, fy, dt, 1.0, 2.0);
         if(h.altitude > 320){
-          h.snrState = 'NONE';
-          h.phase = 'AI';
+          if(h.snrNextTask){
+            h.finalX = h.snrNextTask.finalX;
+            h.finalY = h.snrNextTask.finalY;
+            h.gateX = h.snrNextTask.gateX;
+            h.gateY = h.snrNextTask.gateY;
+            h.tx = h.gateX;
+            h.ty = h.gateY;
+            h.snrApproachHeading = h.snrNextTask.approachHeading;
+            h.snrNextTask = null;
+            h.snrState = 'APPROACH';
+            h.phase = 'MANUAL';
+            h.desiredAltitude = 150;
+          } else {
+            h.snrState = 'NONE';
+            h.phase = 'AI';
+          }
         }
         return;
       }
@@ -1161,7 +1122,7 @@
     for(const h of helicopters){
       if(h.mission !== 'MAD') continue;
       if(h.madDeploy < 0.95) continue;
-      if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN' || !h.alive) continue;
+      if(h.fuelState === 'LOW' || h.fuelState === 'OFFSCREEN') continue;
 
       const madHit = findNearestDetectableContact(h.x, h.y, getMadRangeNm(), 'MAD');
       if(h.altitude <= 500 && madHit){
@@ -1195,7 +1156,6 @@
     updateSubmarine(dt);
     updateFalseTargets(dt);
     helicopters.forEach(h => updateHS(h, dt));
-    checkHSCollisions();
     updateBuoyBearings(dt);
     updateMadDetection(dt);
   }
@@ -1265,59 +1225,44 @@
   }
 
   function drawDownwashAt(x, y){
-    const t = performance.now() * 0.004;
+    const t = performance.now() * 0.0035;
 
-    const r1 = 16 + Math.sin(t) * 1.8;
-    const r2 = 26 + Math.sin(t * 0.85) * 2.4;
+    const r1 = 24 + Math.sin(t) * 1.5;
+    const r2 = 34 + Math.sin(t * 0.9) * 2.0;
 
     ctx.beginPath();
-    ctx.arc(x, y, r1, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255,255,255,0.30)";
-    ctx.lineWidth = 2.1;
+    ctx.arc(x, y + 12, r1, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.lineWidth = 1.6;
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(x, y, r2, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255,255,255,0.16)";
-    ctx.lineWidth = 2;
+    ctx.arc(x, y + 12, r2, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1.4;
     ctx.stroke();
 
-    for(let i=0;i<7;i++){
-      const a = (Math.PI * 2 / 7) * i + t * 0.3;
-      const ix = x + Math.cos(a) * 8;
-      const iy = y + Math.sin(a) * 8;
-      const ox = x + Math.cos(a) * 18;
-      const oy = y + Math.sin(a) * 18;
+    for(let i = 0; i < 8; i++){
+      const a = (Math.PI * 2 / 8) * i + t * 0.45;
+      const ix = x + Math.cos(a) * 20;
+      const iy = y + 12 + Math.sin(a) * 20;
+      const ox = x + Math.cos(a) * 31;
+      const oy = y + 12 + Math.sin(a) * 31;
+
       ctx.beginPath();
       ctx.moveTo(ix, iy);
       ctx.lineTo(ox, oy);
-      ctx.strokeStyle = "rgba(255,255,255,0.07)";
+      ctx.strokeStyle = "rgba(255,255,255,0.05)";
       ctx.lineWidth = 1;
       ctx.stroke();
     }
   }
 
   function drawHelicopterSprite(h, isSelected = false){
-    if(h.fuelState === 'OFFSCREEN' || !h.alive) return;
+    if(h.fuelState === 'OFFSCREEN') return;
 
     const x = nmX(h.x);
     const y = nmY(h.y);
-
-    if(h.collisionState === 'EXIT' && h.smokeTimer > 0){
-      for(let i = 0; i < 5; i++){
-        const ox = x - h.collisionVX * 55 * (i + 1) * 0.02;
-        const oy = y - h.collisionVY * 55 * (i + 1) * 0.02;
-        const r = 4 + i * 2;
-        ctx.beginPath();
-        ctx.arc(
-          ox + Math.sin(performance.now() * 0.002 + i) * 2,
-          oy + Math.cos(performance.now() * 0.002 + i * 0.7) * 2,
-          r, 0, Math.PI * 2
-        );
-        ctx.fillStyle = `rgba(90,90,90,${0.22 - i * 0.03})`;
-        ctx.fill();
-      }
-    }
 
     const altitudeScale =
       h.altitude <= 180 ? 0.90 :
@@ -1347,7 +1292,7 @@
     ctx.rotate(h.heading + Math.PI / 2);
 
     if(h.mission === "SNR" && (h.snrState === "HOVER_WAIT" || h.snrState === "ACTIVE")){
-      drawDownwashAt(0, 14);
+      drawDownwashAt(0, 18);
     }
 
     ctx.beginPath();
@@ -1499,7 +1444,6 @@
     if(h.mission === "SNR") light = "#9fe8ff";
     if(h.phase === "TRANSIT") light = "#c9f2ff";
     if(h.fuelState === "LOW") light = "#ff7f7f";
-    if(h.collisionState === 'EXIT') light = "#cfcfcf";
 
     ctx.beginPath();
     ctx.arc(0, baseSize * 0.08, baseSize * 0.075, 0, Math.PI * 2);
@@ -1536,7 +1480,6 @@
     for(const h of helicopters){
       if(h.mission !== 'SNR') continue;
       if(!['HOVER_WAIT','ACTIVE'].includes(h.snrState)) continue;
-      if(!h.alive) continue;
 
       const hx = nmX(h.x);
       const hy = nmY(h.y);
@@ -1684,7 +1627,7 @@
     }
 
     const drawOrder = [...helicopters]
-      .filter(h => h.alive && h.fuelState !== 'OFFSCREEN')
+      .filter(h => h.fuelState !== 'OFFSCREEN')
       .sort((a, b) => a.altitude - b.altitude);
 
     drawOrder.forEach(h => drawHelicopterSprite(h, state.selected === h));
